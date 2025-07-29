@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kooks - Web3 Rewards</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: url('webteste%20copy.png') no-repeat center center / cover;
+      color: white;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      text-align: center;
+      padding: 3rem 1rem;
+    }
+
+    .logo {
+      margin-top: 3rem;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #c2bfff;
+      text-shadow: 0 0 12px rgba(194,191,255,0.4);
+      animation: glow 2s infinite alternate;
+    }
+
+    .main-title {
+     margin-top: 9rem;
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    font-weight: 300;
+    line-height: 1.2;
+    animation: fadeUp 1.2s ease-out forwards;
+    }
+
+    .highlight {
+      color: #b299ff;
+      font-weight: 800;
+    }
+
+    .subtitle {
+      margin-top: 1.5rem;
+      font-size: 1rem;
+      max-width: 600px;
+      color: #cfcfcf;
+      animation: fadeUp 1.5s ease-out forwards;
+    }
+
+    .button {
+      margin-top: 4rem;
+      padding: 1rem 5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #1f1f1f;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+
+    .button:hover {
+      background: #333;
+      transform: translateY(-2px);
+    }
+
+    .note {
+      margin-top: 3rem;
+      font-size: 0.75rem;
+      color: #14004d;
+    }
+
+    .footer {
+      margin-top: auto;
+      padding: 1rem 0;
+      font-size: 0.75rem;
+      color: #999;
+    }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 5px #b299ff; }
+      to { text-shadow: 0 0 20px #b299ff; }
+    }
+
+    @keyframes fadeUp {
+      0% { opacity: 0; transform: translateY(20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 768px) {
+      .main-title {
+        font-size: 2rem;
+      }
+
+      .subtitle {
+        font-size: 0.9rem;
+      }
+
+      .button {
+        width: 100%;
+        max-width: 300px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">Kooks.</div>
+
+  <h1 class="main-title">
+    <span class="highlight">Kooks</span> is a premier<br />
+    web3 reward platform
+  </h1>
+
+  <p class="subtitle">
+    Renowned for powering the backbone of crypto earning ecosystems with our state-of-the-art CPA services, instant payouts & SOL rewards.
+  </p>
+
+  <button class="button">Connect wallet</button>
+
+  <p class="note">Secure wallet connection required. Connect your Phantom wallet to access the platform and start earning SOL rewards</p>
+
+  <footer class="footer">
+    © 2025 Kooks, Inc. All rights reserved.
+  </footer>
+</body>
+</html>
