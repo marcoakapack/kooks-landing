@@ -59,7 +59,7 @@ function T(str, x, y, o = {}) {
   g.font = `${o.it ? 'italic ' : ''}${o.w || 400} ${o.s || 40}px Inter, "Inter Display", sans-serif`;
   g.fillStyle = o.c || '#fff'; g.textAlign = o.al || 'left'; g.textBaseline = 'alphabetic';
   g.letterSpacing = (o.ls || 0) + 'px';
-  if (o.glow) { g.shadowColor = o.glowC || o.c || '#fff'; g.shadowBlur = o.glow; } else { g.shadowColor = 'transparent'; g.shadowBlur = 0; }
+  g.shadowColor = 'transparent'; g.shadowBlur = 0;
   g.fillText(str, x, y); const w = g.measureText(str).width; g.restore(); return w;
 }
 function L(pts, o = {}) {
@@ -266,8 +266,7 @@ function placeCam(cam, jetG, c, t, shake = 0) {
     cam.position.set(Math.cos(c.el) * Math.cos(c.az) * c.dist, Math.sin(c.el) * c.dist, Math.cos(c.el) * Math.sin(c.az) * c.dist).add(_tg);
     _lk.copy(_tg); if (c.lookOff) _lk.add(_v.set(...c.lookOff));
   }
-  const hs = .06 + shake; // handheld
-  cam.position.add(_v.set(Math.sin(t * 1.3) * .5 + Math.sin(t * 17) * shake, Math.sin(t * 1.7 + 1) * .4 + Math.sin(t * 13 + 1) * shake, Math.sin(t * 1.1 + 2) * .4 + Math.sin(t * 19 + 2) * shake).multiplyScalar(hs * (c.pos ? .15 : 1)));
+  cam.position.add(_v.set(Math.sin(t * 1.3) * .5, Math.sin(t * 1.7 + 1) * .4, Math.sin(t * 1.1 + 2) * .4).multiplyScalar(.06 * (c.pos ? .15 : 1)));
   cam.up.set(0, 1, 0); cam.lookAt(_lk); if (c.roll) cam.rotateZ(c.roll);
   cam.fov = c.fov || 40;
   if (c.shift || c.shiftY) cam.setViewOffset(W, H, -(c.shift || 0), c.shiftY || 0, W, H); else cam.clearViewOffset();
@@ -320,8 +319,8 @@ function makeStorm() {
   function update(t, o) {
     const dt = lastT === null ? 0 : clamp(t - lastT, 0, .1); lastT = t;
     const tb = o.turb || 0;
-    const n1 = Math.sin(t * 6.3) * .5 + Math.sin(t * 11.7 + 1.3) * .3 + Math.sin(t * 2.1 + .4) * .7;
-    const n2 = Math.sin(t * 5.1 + 2) * .5 + Math.sin(t * 9.3) * .4 + Math.sin(t * 1.7) * .4;
+    const n1 = Math.sin(t * 1.1) * .6 + Math.sin(t * 2.1 + .4) * .6;
+    const n2 = Math.sin(t * .9 + 2) * .6 + Math.sin(t * 1.7) * .5;
     const pitch = o.pitch || 0, roll = o.roll || 0;
     jet.group.position.set(...(o.jetOff || [0, 0, 0])).add(tmp.set(0, tb * n1 * 1.4, 0));
     jet.group.rotation.set(roll + tb * n2 * .07, 0, pitch + tb * n1 * .035);
@@ -377,8 +376,8 @@ function makeSky() {
   const planes = {};
   // coffin corner walls
   const wallTex = (() => { const c = document.createElement('canvas'); c.width = 512; c.height = 512; const x = c.getContext('2d');
-    const gr = x.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.42)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 512, 512);
-    x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 2; for (let i = 0; i <= 512; i += 32) { x.globalAlpha = .5; x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 512); x.stroke(); x.beginPath(); x.moveTo(0, i); x.lineTo(512, i); x.stroke(); }
+    const gr = x.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.22)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 512, 512);
+    x.strokeStyle = '#fff'; x.lineWidth = 3; for (let i = 0; i <= 512; i += 32) { x.globalAlpha = (i % 128 ? .6 : .95); x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 512); x.stroke(); x.beginPath(); x.moveTo(0, i); x.lineTo(512, i); x.stroke(); }
     const t = new THREE.CanvasTexture(c); return t; })();
   const mkWall = col => { const m = new THREE.Mesh(new THREE.PlaneGeometry(90, 56), new THREE.MeshBasicMaterial({ map: wallTex, color: col, transparent: true, opacity: 0, blending: THREE.NormalBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })); m.rotation.y = Math.PI / 2; scene.add(m); return m; };
   const wallS = mkWall(0xff3a48), wallM = mkWall(0xffb547);
@@ -723,11 +722,14 @@ function makeAirfoil() {
     if (sk > 0) { const key = Math.round(sx * 100); if (key !== lastPocket) { buildPocket(sx); lastPocket = key; } } pocketMat.opacity = sk * .28;
     wingMat.emissive.setRGB(o.stress ? .55 * o.stress : 0, 0, 0);
     dustP.position.x = -lt * .3 % 2;
-    const c = o.cam || {}; cam.position.set(...(c.pos || [-2.4, 1.15, 8.6])); cam.fov = c.fov || 30;
+    const c = o.cam || {}; cam.fov = c.fov || 30;
+    if (c.dist) { const lk = c.look || [0, 0, -.5]; cam.position.set(lk[0] + Math.sin(c.az) * Math.cos(c.el) * c.dist, lk[1] + Math.sin(c.el) * c.dist, lk[2] + Math.cos(c.az) * Math.cos(c.el) * c.dist); }
+    else cam.position.set(...(c.pos || [-2.4, 1.15, 8.6]));
     if (c.shift) cam.setViewOffset(W, H, -c.shift, 0, W, H); else cam.clearViewOffset(); cam.updateProjectionMatrix(); cam.lookAt(V3(...(c.look || [.1, .05, -1])));
     draw(scene, cam, .9, .45);
   }
-  return { cam, update, xLE, xTE, chordPoint: f => { const x = lerp(xLE, xTE, f); return V3(x, (yU(x) + yL(x)) / 2, .02); }, upperPoint: f => { const x = lerp(xLE, xTE, f); return V3(x, yU(x), .02); } };
+  const xMid = (xLE + xTE) / 2;
+  return { cam, update, xLE, xTE, xMid, chordPoint: f => { const x = lerp(xLE, xTE, f); return V3(x, (yU(x) + yL(x)) / 2, .02); }, upperPoint: f => { const x = lerp(xLE, xTE, f); return V3(x, yU(x), .02); } };
 }
 
 /* ============================== BUILD ============================== */
@@ -822,7 +824,6 @@ function captions(sc, lt, k = 1) {
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
     g.fillStyle = it.o.k ? KCOL[it.o.k] : (active ? '#fff' : 'rgba(255,255,255,.86)');
     g.fillText(it.o.w, 0, 0);
-    if (it.o.k && active) { g.shadowColor = KCOL[it.o.k]; g.shadowBlur = 26; g.shadowOffsetY = 0; g.globalAlpha = a * .55; g.fillText(it.o.w, 0, 0); }
     g.restore(); x += it.w + gap;
   }
   g.restore();
@@ -837,7 +838,7 @@ function KT(str, x, y, o, t0, lt) {
     const p = clamp((lt - t0 - i * stg) / .45); if (p <= 0) break;
     const px = x0 + g.measureText(str.slice(0, i)).width;
     g.save(); g.globalAlpha = a * clamp(p * 2); g.fillStyle = o.c || '#fff';
-    g.shadowColor = o.glow ? (o.glowC || o.c) : 'transparent'; g.shadowBlur = o.glow || 0;
+    g.shadowColor = 'transparent'; g.shadowBlur = 0;
     g.translate(px, y + (1 - eout(p)) * (o.dy ?? 40)); g.textAlign = 'left'; g.fillText(str[i], 0, 0); g.restore();
   }
   g.restore();
@@ -852,7 +853,7 @@ function chapterCard(sc, lt) {
   if (!sc.chapter) return; const a = win(lt, .05, sc.lead + .1, .3, .35); if (a <= 0) return;
   g.fillStyle = `rgba(0,0,0,${.4 * a})`; g.fillRect(0, 0, W, H);
   const z = 1 + seg(lt, 0, sc.lead) * .06; g.save(); g.translate(W / 2, 540); g.scale(z, z); g.translate(-W / 2, -540);
-  KT(sc.numeral, W / 2, 470, { s: 30, w: 300, ls: 10, al: 'center', c: AMBER, a, dy: 20 }, .05, lt);
+  KT(sc.numeral, W / 2, 470, { s: 64, w: 300, ls: 0, al: 'center', c: AMBER, a, dy: 20 }, .05, lt);
   L([[W / 2 - 60 * eout(seg(lt, .1, .6)), 500], [W / 2 + 60 * eout(seg(lt, .1, .6)), 500]], { c: AMBER, lw: 2, a });
   KT(sc.chapter.toUpperCase(), W / 2, 590, { s: 80, w: 300, ls: 18, al: 'center', a, stg: .03 }, .15, lt);
   g.restore();
@@ -1031,11 +1032,12 @@ const SCENES = {
       T('liquid water, far below 0 °C', W / 2, 620, { s: 26, w: 300, ls: 3, al: 'center', a: sa });
     } else {
       const l = lt - sw2;
-      foil.update(t, lt, { drops: 1, dropT: l * 1.25, ice: 0, flowK: .5, cam: { pos: [lerp(-3.8, -3.1, seg(l, 0, 5)), .45, 4.8], look: [-1.5, 0, -.8], fov: 30 } });
+      const uo = eio(seg(lt, sw2, sc.dur));
+      foil.update(t, lt, { drops: 1, dropT: l * 1.25, ice: 0, flowK: .5, cam: { look: [foil.xMid - .5, .05, -.8], dist: lerp(9.5, 8.6, uo), az: lerp(-.3, .15, uo), el: lerp(.16, .1, uo), fov: 30 } });
       post(t);
       const [lx, ly] = proj(foil.chordPoint(0), foil.cam);
       const a = win(lt, sw2 + .6, sc.dur + 1, .6, .1);
-      callout(foil.chordPoint(0), foil.cam, -200, 140, 'INSTANT FREEZE', 'droplets turn to ice on impact', a, ICE);
+      callout(foil.chordPoint(0), foil.cam, -190, 130, 'INSTANT FREEZE', 'droplets turn to ice on impact', a, ICE);
     }
     return { cuts, flash: lt < sw1 ? fl.f : 0 };
   },
@@ -1044,8 +1046,11 @@ const SCENES = {
   ice(lt, sc, t) {
     const s = sc.S;
     const ice = eio(seg(lt, s(3) + .4, s(3) + 3.6));
-    const camA = { pos: [-2.6, 1.6, 10], look: [.2, -.2, -1], fov: 30 }, camB = { pos: [-3.4, .55, 5.0], look: [-1.4, .1, -1], fov: 30 }, camC = { pos: [-1.2, 1.2, 9.5], look: [.8, -.4, -1], fov: 30, shift: -260 };
-    let c = lt < s(3) ? lerpShot(camA, { ...camA, pos: [-1.8, 1.2, 9.2] }, seg(lt, 0, s(3))) : (lt < s(4) ? lerpShot(camB, { ...camB, pos: [-3.0, .7, 4.6] }, seg(lt, s(3), s(4))) : lerpShot(camC, { ...camC, pos: [-.8, 1.0, 9.2] }, seg(lt, s(4), sc.dur)));
+    const LK = [foil.xMid, .1, -.8];
+    let c;
+    if (lt < s(3)) { const u = eio(seg(lt, 0, s(3))); c = { look: LK, dist: lerp(11.5, 10.2, u), az: lerp(-.3, .2, u), el: lerp(.2, .1, u), fov: 30 }; }
+    else if (lt < s(4)) { const u = eio(seg(lt, s(3), s(4))); c = { look: [foil.xMid - .4, .15, -.6], dist: lerp(8.6, 7.8, u), az: lerp(.3, -.25, u), el: lerp(.06, .14, u), fov: 30 }; }
+    else { const u = eio(seg(lt, s(4), sc.dur)); c = { look: LK, dist: lerp(12.5, 11.5, u), az: lerp(-.35, .2, u), el: .16, fov: 30 }; }
     foil.update(t, lt, { ice, sep: ice, flowK: 1, speedCol: true, cam: c });
     post(t);
     // equation
@@ -1065,27 +1070,28 @@ const SCENES = {
     // lift arrow
     const la = win(lt, s(2), sc.dur + 1, .6, .1); const lift = lerp(1, .55, ice);
     const [px, py] = proj(foil.chordPoint(.27), foil.cam);
-    if (lt < s(4)) { arrow(px, py - 20, px, py - 20 - 260 * lift, { c: GREEN, lw: 5, a: la, glow: 18, hs: 24 }); T('LIFT', px + 22, py - 120, { s: 22, w: 600, ls: 6, c: GREEN, a: la }); }
-    callout(foil.chordPoint(0), foil.cam, -160, 150, 'ICE RIDGE', 'glaze ice forms “horns”', win(lt, s(3) + 1.2, s(4)), ICE);
-    callout(foil.upperPoint(.6).add(V3(0, .3, 0)), foil.cam, 160, -150, 'FLOW SEPARATION', 'turbulent air, lost lift', win(lt, s(3) + 2.2, s(4) + .2), RED);
+    if (lt < s(4)) { arrow(px, py - 20, px, py - 20 - 190 * lift, { c: GREEN, lw: 5, a: la, glow: 18, hs: 24 }); T('LIFT', px + 22, py - 100, { s: 22, w: 600, ls: 6, c: GREEN, a: la }); }
+    callout(foil.chordPoint(0), foil.cam, -180, 130, 'ICE RIDGE', 'glaze ice forms “horns”', win(lt, s(3) + 1.2, s(4)), ICE);
+    callout(foil.upperPoint(.6).add(V3(0, .3, 0)), foil.cam, 140, -130, 'FLOW SEPARATION', 'turbulent air, lost lift', win(lt, s(3) + 2.2, s(4) + .2), RED);
     // CL–alpha graph, glowing, no frame
     const ga = win(lt, s(4) + .1, sc.dur + 1, .6, .1);
-    const GX = 1180, GY = 420, GW = 600, GH = 360;
+    const GW = 760, GH = 400, GX = W / 2 - GW / 2, GY = 300;
+    if (ga > 0) { g.save(); g.globalAlpha = ga * .82; g.fillStyle = '#04070d'; g.beginPath(); g.roundRect(GX - 90, GY - 90, GW + 180, GH + 190, 18); g.fill(); g.restore(); }
     const gx = a => GX + a / 20 * GW, gy = c => GY + GH - c / 1.8 * GH;
     L([[GX, GY], [GX, GY + GH], [GX + GW, GY + GH]], { c: 'rgba(255,255,255,.45)', lw: 1.2, a: ga });
-    T('LIFT COEFFICIENT', GX, GY - 22, { s: 16, w: 600, ls: 5, c: 'rgba(255,255,255,.7)', a: ga });
-    T('ANGLE OF ATTACK →', GX + GW, GY + GH + 34, { s: 16, w: 600, ls: 5, al: 'right', c: 'rgba(255,255,255,.7)', a: ga });
+    T('LIFT', GX - 20, GY - 30, { s: 22, w: 600, ls: 4, c: 'rgba(255,255,255,.85)', a: ga });
+    T('ANGLE OF ATTACK →', GX + GW, GY + GH + 44, { s: 22, w: 600, ls: 4, al: 'right', c: 'rgba(255,255,255,.85)', a: ga });
     const clf = (a, m, st) => a <= st ? m * a : m * st - (a - st) * .09 - (a - st) ** 2 * .012;
     const dr = eio(seg(lt, s(4) + .2, s(4) + 2)); const clean = [], iced = [];
     for (let a = 0; a <= 20 * dr; a += .25) { clean.push([gx(a), gy(Math.max(0, clf(a, .108, 15)))]); iced.push([gx(a), gy(Math.max(0, clf(a, .1, 9.5)))]); }
     L(clean, { c: CYAN, lw: 3, a: ga, glow: 14 });
     const ia = ss(s(4) + 1.2, s(4) + 2.4, lt) * ga; L(iced, { c: RED, lw: 3, a: ia, glow: 14 });
-    T('CLEAN', gx(15), gy(1.62) - 18, { s: 16, w: 600, ls: 4, al: 'center', c: CYAN, a: ga * ss(.7, 1, dr) });
-    T('ICED', gx(9.5), gy(.95) - 18, { s: 16, w: 600, ls: 4, al: 'center', c: RED, a: ia });
+    T('CLEAN WING', gx(15), gy(1.62) - 22, { s: 24, w: 600, ls: 4, al: 'center', c: CYAN, a: ga * ss(.7, 1, dr) });
+    T('ICED WING', gx(9.5) - 20, gy(.95) - 22, { s: 24, w: 600, ls: 4, al: 'center', c: RED, a: ia });
     L([[gx(15), gy(1.62) + 6], [gx(15), gy(.95)]], { c: '#fff', lw: 1.2, dash: [4, 6], a: ia });
-    T('−35%', gx(15) + 16, gy(1.25), { s: 44, w: 200, a: ia });
-    T('EARLIER STALL', gx(9.5), GY + GH + 34, { s: 14, w: 600, ls: 3, al: 'center', c: RED, a: ia });
-    T('illustrative', GX + GW, GY - 22, { s: 14, w: 300, al: 'right', c: 'rgba(255,255,255,.4)', a: ga });
+    T('−35% LIFT', gx(15) + 20, gy(1.25), { s: 48, w: 300, a: ia });
+    T('STALLS EARLIER', gx(9.5), gy(.3), { s: 22, w: 600, ls: 3, al: 'center', c: RED, a: ia });
+    T('illustrative', GX + GW, GY - 30, { s: 16, w: 300, al: 'right', c: 'rgba(255,255,255,.4)', a: ga });
     return { cuts: [s(3), s(4)] };
   },
 
@@ -1160,7 +1166,7 @@ const SCENES = {
       const u = isFlex ? seg(lt, C, D) : seg(lt, A, B);
       const cam = lerpShot({ pos: [-7.5, 3.3, 1.5], look: [-.6, -.5, 4.3], fov: 40 }, { pos: [-6.5, 2.7, 2.6], look: [-.6, -.5, 4.6], fov: 38 }, eio(u));
       storm.update(t, { pitch: -1.0, roll: .7, speed: 420, turb: 1.4, flash: fl, cam, rainK: 1.5, shock: isFlex ? 0 : ss(A + .2, A + 1.4, lt), shockF: isFlex ? .62 : lerp(.32, .45, u),
-        flex: isFlex ? ss(C + .3, C + 3, lt) * (1 + .15 * Math.sin(lt * 18)) : 0, stress: isFlex ? ss(C + 1.5, D, lt) * (.75 + .25 * Math.sin(lt * 9)) : 0, boltK: .6 });
+        flex: isFlex ? ss(C + .3, C + 3, lt) * (1 + .1 * Math.sin(lt * 2.4)) : 0, stress: isFlex ? ss(C + 1.5, D, lt) * (.75 + .25 * Math.sin(lt * 9)) : 0, boltK: .6 });
       post(t, { vig: 1.2 }); 
       if (!isFlex) KT('SHOCK WAVE', W / 2, 780, { s: 52, w: 600, ls: 18, al: 'center', c: '#fff1c9', a: win(lt, A + 1, B + .2), glow: 18, glowC: AMBER }, A + 1, lt);
       else {
@@ -1174,7 +1180,7 @@ const SCENES = {
       // Mach tuck insert on the airfoil
       const u = seg(lt, B, C);
       const shockX = lerp(-.25, .75, eio(seg(lt, B + .2, B + 3.5)));
-      foil.update(t, lt, { ice: .2, sep: .15, flowK: .9, speedCol: true, shock: 1, shockX, cam: lerpShot({ pos: [-2.6, 1.7, 9.8], look: [.3, -.1, -1], fov: 30 }, { pos: [-1.6, 1.3, 9.0], look: [.3, -.1, -1], fov: 30 }, u) });
+      foil.update(t, lt, { ice: .2, sep: .15, flowK: .9, speedCol: true, shock: 1, shockX, cam: { look: [foil.xMid, .25, -.8], dist: lerp(12.5, 11.5, eio(u)), az: lerp(-.3, .15, eio(u)), el: .14, fov: 30 } });
       post(t);
       const cpf = lerp(.25, .5, eio(seg(lt, B + .4, B + 3.5))); const [cx2, cy2] = proj(foil.chordPoint(cpf), foil.cam);
       const ca = win(lt, B + .2, C + .2);
@@ -1213,9 +1219,9 @@ const SCENES = {
       const cam = [{ dist: lerp(110, 90, u), az: 2.25 + u * .3, el: .03, fov: 26, lookOff: [0, 6, 0] }, { dist: lerp(26, 18, u), az: lerp(.4, .9, u), el: .08, fov: 32, lookOff: [2, 1, 0] }, { dist: lerp(90, 120, u), az: lerp(3.4, 3.6, u), el: .3, fov: 28, lookOff: [0, -4, 0] }][k];
       const res = sky.update(t, { mode: 'day', speed: 80, hideJet: false, cam });
       flare(res.sunWorld, sky.cam, .6); post(t);
-      T('HYPOTHESES, NOT CONCLUSIONS', W / 2, 330, { s: 30, w: 400, ls: 16, al: 'center', a: win(lt, s(0) + .1, A + .2) });
+      KT('Hypotheses, not conclusions.', W / 2, 330, { s: 58, w: 300, ls: 0, al: 'center', a: win(lt, s(0) + .1, A + .2), stg: .02 }, s(0) + .1, lt);
       const items = [['PRELIMINARY REPORT', 'expected within weeks', s(1) + 2.5], ['PROBABLE CAUSE', 'typically 12 to 24 months', s(2) + .1]];
-      items.forEach(([a1, b1, ts], i) => { const a = win(lt, ts, A + .2); const y = 790 + i * 0; const x = 150 + i * 620; L([[x, y - 60], [x + 60 * eout(clamp(a * 1.3)), y - 60]], { c: AMBER, lw: 2, a }); T(a1, x, y - 14, { s: 26, w: 600, ls: 6, a }); T(b1, x, y + 28, { s: 24, w: 300, c: 'rgba(255,255,255,.85)', a }); });
+      if (0) items.forEach(([a1, b1, ts], i) => { const a = win(lt, ts, A + .2); const y = 790 + i * 0; const x = 150 + i * 620; L([[x, y - 60], [x + 60 * eout(clamp(a * 1.3)), y - 60]], { c: AMBER, lw: 2, a }); T(a1, x, y - 14, { s: 26, w: 600, ls: 6, a }); T(b1, x, y + 28, { s: 24, w: 300, c: 'rgba(255,255,255,.85)', a }); });
       return { cuts: [s(1), s(2)] };
     }
     if (lt < B) {
@@ -1257,7 +1263,7 @@ function renderFrame(t) {
   for (const [i, c] of (res.cuts || []).entries()) { const d = lt - c; if (Math.abs(d) < .16) { const k = 1 - Math.abs(d) / .16; if (k > Math.abs(whip)) { whip = k * k; dir = (i % 2 ? -1 : 1) * Math.sign(d || 1); } } }
   let punch = 0; for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < 1) punch = Math.max(punch, Math.exp(-d * 5) * ss(0, .04, d)); }
   const fl = flashAt(t).f * (res.flash !== undefined ? 1 : 0);
-  const shx = (Math.sin(t * 61) + Math.sin(t * 37)) * (punch * 5 + fl * 7), shy = (Math.sin(t * 53 + 1) + Math.sin(t * 29)) * (punch * 4 + fl * 6);
+  const shx = 0, shy = 0;
   // never a static frame: every shot drifts in, and long shots get jump-zooms every ~2.6 s
   const cutsAll = [0, ...(res.cuts || []).filter(c => c > 0 && c < sc.dur), sc.dur].sort((a, b) => a - b);
   let s0 = 0, s1 = sc.dur; for (let i = 0; i + 1 < cutsAll.length; i++) if (lt >= cutsAll[i] && lt < cutsAll[i + 1]) { s0 = cutsAll[i]; s1 = cutsAll[i + 1]; }
@@ -1282,7 +1288,6 @@ function renderFrame(t) {
   if (res.fadeOut) black = Math.max(black, ss(sc.dur - res.fadeOut, sc.dur, lt));
   if (black > 0) { g.fillStyle = `rgba(0,0,0,${black})`; g.fillRect(0, 0, W, H); }
   letterbox();
-  progressBar(t);
 }
 // chapter progress bar inside the top letterbox: viewers always see where they are and what's next
 const CUTS_ABS = new Set(); window.CUTS_ABS = CUTS_ABS;

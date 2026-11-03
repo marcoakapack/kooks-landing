@@ -48,10 +48,46 @@ for f in [220, 277.18, 329.63, 440]:
     pad += np.sin(2 * np.pi * f * t) * (.6 + .4 * np.sin(2 * np.pi * .07 * t + f))
 pad *= env_scene(["outro"], .18, 4) + env_scene(["age", "facts"], .06, 3)
 
-print("· wind / rain")
-noise = rng.standard_normal(N)
-wind = lp(noise, 380, 2) * (1 + .5 * np.sin(2 * np.pi * .13 * t)) * env_scene(["hook", "storm", "dive"], 1.0, 2)
-rain = (lp(noise, 6000, 1) - lp(noise, 1500, 1)) * env_scene(["hook", "storm", "dive"], .25, 2)
+# realistic recorded-style layers from ElevenLabs Sound Effects (audio/sfx/*.mp3, see elevenlabs_sfx.py)
+SFXD = AUD / "sfx"
+def load(name):
+    f = SFXD / f"{name}.mp3"
+    if not f.exists(): return None
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(f), "-ac", "2", "-ar", str(SR), "-f", "f32le", "-"], capture_output=True, check=True).stdout
+    return np.frombuffer(raw, "<f4").reshape(-1, 2).astype(np.float64)
+REAL = {n: load(n) for n in ["amb_cabin", "amb_storm", "amb_high", "amb_dive", "jet_flyby", "thunder_1", "thunder_2", "ice_crackle", "overspeed", "whoosh", "hit"]}
+REAL = {k: v for k, v in REAL.items() if v is not None}
+print("· ElevenLabs sounds:", ", ".join(REAL) or "none (synth only)")
+real = np.zeros((N, 2))
+def place(x, at, gain=1.0, fade_in=.05, fade_out=.3):
+    a = int(at * SR); x = x.copy(); n = len(x)
+    if a < 0: x = x[-a:]; a = 0; n = len(x)
+    n = min(n, N - a)
+    if n <= 0: return
+    x = x[:n]; fi, fo = int(fade_in * SR), int(fade_out * SR)
+    if fi: x[:min(fi, n)] *= np.linspace(0, 1, min(fi, n))[:, None]
+    if fo: x[-min(fo, n):] *= np.linspace(1, 0, min(fo, n))[:, None]
+    real[a:a + n] += x * gain
+def bed_loop(x, a, b, gain, xf=1.5):
+    """tile x across [a, b) with crossfades"""
+    k = int(xf * SR); L = len(x); t0 = a
+    while t0 < b:
+        seg_len = min(L, int((b - t0) * SR) + k)
+        place(x[:seg_len], t0, gain, xf, xf); t0 += (L - k) / SR
+sc_by = {s["id"]: s for s in tl["scenes"]}
+def S(sid, k): s = sc_by[sid]; ss_ = s.get("sentence_starts", []); return s["start"] + (ss_[k] if k < len(ss_) else s["dur"])
+AMB = {"hook": [("amb_storm", .55)], "facts": [("amb_high", .5)], "storm": [("amb_storm", .7)], "ice": [("amb_cabin", .35)],
+       "coffin": [("amb_high", .5)], "dive": [("amb_storm", .6)], "outro": [("amb_high", .45)]}
+for s in tl["scenes"]:
+    for name, gn in AMB.get(s["id"], []):
+        if name in REAL: bed_loop(REAL[name], max(0, s["start"] - .8), s["start"] + s["dur"] + .8, gn)
+if "jet_flyby" in REAL: place(REAL["jet_flyby"], .2, .9)
+if "ice_crackle" in REAL and "ice" in sc_by: place(REAL["ice_crackle"], S("ice", 3) + .4, .8, .3, 1.5)
+if "amb_dive" in REAL and "dive" in sc_by: place(REAL["amb_dive"], S("dive", 1), .8, 1.5, 2.0)
+if "overspeed" in REAL and "dive" in sc_by: place(REAL["overspeed"], S("dive", 2), .35, .05, 1.0)
+for i, st_ in enumerate(tl["strikes"]):
+    th = REAL.get("thunder_1" if i % 2 == 0 else "thunder_2")
+    if th is not None: place(th, st_ + .3, .8 if i % 2 == 0 else .6, .02, 1.0)
 
 print("· thunder")
 thunder = np.zeros(N)
@@ -66,12 +102,16 @@ for st in tl["strikes"]:
     crack = rng.standard_normal(L) * np.exp(-tt / .12) * .35
     thunder[a:a + L] += brown[a:a + L] * envl * 1.2 + crack
 thunder = lp(thunder, 900, 2)
+if "thunder_1" in REAL: thunder[:] = 0   # recorded-style thunder replaces the synth one
 
-bed = drone * .09 + pad * .5 + wind * .18 + rain * .05 + thunder * .55
+bed = drone * .09 + pad * .5 + thunder * .55
 bed = np.tanh(bed * 1.4) / 1.4
 fade = int(2.5 * SR); bed[-fade:] *= np.linspace(1, 0, fade); bed[:int(.5 * SR)] *= np.linspace(0, 1, int(.5 * SR))
 bed = bed / np.abs(bed).max() * .5
 st = np.stack([bed, np.roll(bed, int(.012 * SR))], 1)
+if REAL:
+    st = st + real * .5
+    st = st / (np.abs(st).max() + 1e-9) * .6
 with wave.open(str(OUT / "ambient.wav"), "wb") as w:
     w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR)
     w.writeframes((st * 32767).astype("<i2").tobytes())
@@ -81,6 +121,10 @@ print("· sfx (whooshes on cuts, hits on key words)")
 sfx = np.zeros(N)
 nz = rng.standard_normal(int(.8 * SR)); bands = [lp(nz, f, 2) - lp(nz, f / 3, 2) for f in (700, 2200, 6500)]
 def whoosh(at, gain=1.0, L=.55):
+    if "whoosh" in REAL:
+        x = REAL["whoosh"].mean(1); pk = int(np.argmax(np.abs(x))); a = int(at * SR) - pk
+        if a < 0 or a + len(x) >= N: return
+        sfx[a:a + len(x)] += x / (np.abs(x).max() + 1e-9) * gain * .8; return
     n = int(L * SR); a = int((at - L * .6) * SR)
     if a < 0 or a + n >= N: return
     u = np.linspace(0, 1, n); env = np.sin(np.pi * u) ** 2.2
@@ -88,6 +132,10 @@ def whoosh(at, gain=1.0, L=.55):
     sig = bands[0][:n] * (1 - u) * .8 + bands[1][:n] * np.sin(np.pi * u) + bands[2][:n] * u * .6
     sfx[a:a + n] += sig * env * gain
 def hit(at, gain=1.0):
+    if "hit" in REAL:
+        x = REAL["hit"].mean(1); a = int(at * SR) - int(np.argmax(np.abs(x[:int(.5 * SR)])))
+        if a < 0 or a + len(x) >= N: return
+        sfx[a:a + len(x)] += x / (np.abs(x).max() + 1e-9) * gain; return
     n = int(1.1 * SR); a = int(at * SR)
     if a < 0 or a + n >= N: return
     tt = np.arange(n) / SR; f = 38 + 30 * np.exp(-tt / .08)
