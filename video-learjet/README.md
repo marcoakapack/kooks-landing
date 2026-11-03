@@ -1,6 +1,6 @@
-# 60 segundos de queda: a física do acidente do Learjet 60 na Flórida
+# Sixty Seconds: The Physics of the Florida Learjet Crash
 
-Vídeo explicativo para um canal de ciência e física. A animação, o motion design e o som ambiente são 100% código: Three.js em Chromium headless, renderizado frame a frame e codificado com ffmpeg. Não foram usadas IAs de imagem ou vídeo. A voz é gerada no ElevenLabs.
+Vídeo explicativo em inglês para um canal de YouTube de ciência e física, com realização cinematográfica: letterbox 2.39:1, 24 fps, bloom, grão de película, lens flares, relâmpagos 3D e câmaras montadas no avião. A animação, o motion design e o som ambiente são 100% código: Three.js em Chromium headless, renderizado frame a frame e codificado com ffmpeg. Não foram usadas IAs de imagem ou vídeo. A voz é gerada no ElevenLabs.
 
 ## Pesquisa (estado a 2 nov 2026)
 
@@ -18,25 +18,23 @@ Vídeo explicativo para um canal de ciência e física. A animação, o motion d
 
 A causa provável não está determinada. O vídeo apresenta hipóteses físicas compatíveis com os dados públicos e di-lo explicitamente.
 
-## Estrutura (≈ 4 min 14 s)
+## Estrutura (≈ 4 min 27 s)
 
-1. **A queda**: HUD de altitude 35 000 → 8 750 pés, título.
-2. **O que sabemos**: mapa 3D com a rota Austin → Greenacres e as vítimas.
-3. **Uma copiloto de 20 anos?**: linha temporal das licenças FAA (PPL aos 17, CPL aos 18, ATP aos 23).
-4. **Dentro da trovoada**: cumulonimbo 3D com correntes ascendentes, nível de congelação e água em sobrefusão.
-5. **Gelo na asa**: escoamento potencial exato num perfil de Joukowski (condição de Kutta), gelo em "cornos", separação e gráfico CL-α.
-6. **O canto do caixão**: atmosfera padrão ISA calculada; velocidade de perda vs. limite Vmo/Mmo.
-7. **Overspeed**: descida, 32 000 pés/min = 163 m/s = 585 km/h, onda de choque, Mach tuck, força ∝ v².
-8. **O que falta saber**: prazos do NTSB, desvio de 20 NM no radar, memória das vítimas.
-
-O guião completo está em `script.json`, já preparado para o ElevenLabs.
+0. **Cold open**: dentro da tempestade, contador de altitude 35,000 → 8,750 ft, título *SIXTY SECONDS*.
+1. **Flight N722BD**: voo noturno sobre o mapa do Golfo, com luzes das cidades e células de trovoada sobre Palm Beach.
+2. **The Right Seat**: jato ao pôr do sol, com as idades mínimas da FAA (17 · 18 · SIC · 23) em tipografia integrada no céu.
+3. **Into the Storm**: tráfego rádio, cumulonimbo ao pôr do sol em modo raio-X (correntes ascendentes, nível de congelação, água em sobrefusão) e congelamento instantâneo no bordo de ataque.
+4. **Ice**: escoamento potencial exato num perfil de Joukowski, gelo em "cornos", separação e curva CL–α.
+5. **The Coffin Corner**: "paredes" de perda e de Mach que se fecham à volta do jato (atmosfera ISA calculada).
+6. **Overspeed**: mergulho, 32,000 ft/min = 160 m/s = 360 mph, onda de choque na asa 3D, Mach tuck, flexão da asa (carga ∝ v²) e conclusão preliminar do NTSB.
+7. **What We Don't Know**: prazos do NTSB, contorno de 20 NM em vista aérea e memória das vítimas.
 
 ## Gerar a voz com o ElevenLabs (no teu computador)
 
 ```bash
 cd video-learjet
 export ELEVENLABS_API_KEY="a_tua_chave"      # não faças commit da chave
-export ELEVENLABS_VOICE_ID="id_da_voz"       # recomendado: uma voz pt-PT da Voice Library
+export ELEVENLABS_VOICE_ID="id_da_voz"       # recomendado: voz grave de narrador documental (EN)
 python3 elevenlabs_tts.py                    # → audio/scene_*.mp3 + audio/timings.json
 ```
 

@@ -2,7 +2,7 @@
 """Generate the voice-over with ElevenLabs, one file per scene, with character timestamps.
 
     export ELEVENLABS_API_KEY=...            # never commit this
-    export ELEVENLABS_VOICE_ID=...           # optional: a pt-PT voice from your Voice Library
+    export ELEVENLABS_VOICE_ID=...           # optional: a deep documentary-narrator voice
     python3 elevenlabs_tts.py
 
 Writes audio/scene_XX_<id>.mp3, audio/alignment_XX.json and audio/timings.json.
@@ -12,7 +12,7 @@ import base64, json, os, re, sys, urllib.request, urllib.error, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent
 API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a pt-PT voice for best accent
+VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a documentary narrator voice
 MODEL_ID = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
 SETTINGS = {"stability": 0.55, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": True, "speed": 1.0}
 
