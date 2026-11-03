@@ -4,6 +4,8 @@
     export ELEVENLABS_API_KEY=...            # never commit this
     export ELEVENLABS_VOICE_ID=...           # optional: a deep documentary-narrator voice
     python3 elevenlabs_tts.py
+    python3 elevenlabs_tts.py --voice <VOICE_ID> --preview   # hear only the opening line with another voice
+    python3 elevenlabs_tts.py --voice <VOICE_ID>             # generate everything with that voice
 
 Writes audio/scene_XX_<id>.mp3, audio/alignment_XX.json and audio/timings.json.
 Uses only the Python standard library.
@@ -20,7 +22,8 @@ for envf in (".env.local", ".env"):
                 k, v = ln.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a documentary narrator voice
+ARGV = sys.argv[1:]
+VOICE_ID = ARGV[ARGV.index("--voice") + 1] if "--voice" in ARGV else os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a documentary narrator voice
 MODEL_ID = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
 FORMAT = os.environ.get("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")  # 128 kbps works on every plan; 192 needs Creator+
 SETTINGS = {"stability": 0.55, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": True, "speed": 1.0}
@@ -46,6 +49,15 @@ def tts(text, prev_text, next_text):
     except urllib.error.HTTPError as e:
         sys.exit(f"ElevenLabs HTTP {e.code}: {e.read().decode(errors='replace')}")
 
+
+if "--preview" in ARGV:
+    # try a voice cheaply: only the opening scene, timings.json untouched
+    sc = script["scenes"][0]
+    res = tts(sc["text"], None, None)
+    f = out / f"preview_{VOICE_ID}.mp3"; f.write_bytes(base64.b64decode(res["audio_base64"]))
+    print(f"Amostra gravada: {f}")
+    if sys.platform == "darwin": os.system(f'open "{f}"')
+    sys.exit(0)
 
 timings = {"voice_id": VOICE_ID, "model_id": MODEL_ID, "scenes": []}
 scenes = script["scenes"]
