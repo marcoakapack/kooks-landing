@@ -145,7 +145,6 @@ def hit(at, gain=1.0):
     sfx[a:a + n] += (body + click) * gain
 cuts = sorted({c for f in (OUT / "parts").glob("*.cuts.json") for c in json.loads(f.read_text())}) if (OUT / "parts").exists() else []
 last = -9
-for p in tl.get("punches", []): hit(p, .8)
 for s in tl["scenes"][1:]: hit(s["start"] + .1, 1.3)
 sfx = sfx / (np.abs(sfx).max() + 1e-9) * .5
 with wave.open(str(OUT / "sfx.wav"), "wb") as w:
@@ -190,7 +189,7 @@ srt = "\n".join(f"{k + 1}\n{ts(a)} --> {ts(b)}\n{txt}\n" for k, (a, b, txt) in e
 print("  → out/legendas.srt")
 
 n = len(labels)
-fc = ";".join(filters) + f";{''.join(labels)}amix=inputs={n}:normalize=0,volume=1.0,asplit=2[voice][sc];" \
+fc = ";".join(filters) + f";{''.join(labels)}amix=inputs={n}:normalize=0,volume=1.0,apad=whole_dur={TOTAL:.3f},asplit=2[voice][sc];" \
      "[1:a]volume=0.55[bed];[bed][sc]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400[ducked];" \
      f"[{n + 2}:a]volume=0.5[fx];[voice][ducked][fx]amix=inputs=3:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
 vf = []

@@ -1241,7 +1241,7 @@ const SCENES = {
       KT('Hypotheses, not conclusions.', W / 2, 330, { s: 58, w: 300, ls: 0, al: 'center', a: win(lt, s(0) + .1, A + .2), stg: .02 }, s(0) + .1, lt);
       const items = [['PRELIMINARY REPORT', 'expected within weeks', s(1) + 2.5], ['PROBABLE CAUSE', 'typically 12 to 24 months', s(2) + .1]];
       if (0) items.forEach(([a1, b1, ts], i) => { const a = win(lt, ts, A + .2); const y = 790 + i * 0; const x = 150 + i * 620; L([[x, y - 60], [x + 60 * eout(clamp(a * 1.3)), y - 60]], { c: AMBER, lw: 2, a }); T(a1, x, y - 14, { s: 26, w: 600, ls: 6, a }); T(b1, x, y + 28, { s: 24, w: 300, c: 'rgba(255,255,255,.85)', a }); });
-      return { cuts: [s(1), s(2)] };
+      return { cuts: [s(1), s(2)], hard: [s(2)] };
     }
     if (lt < B) {
       const u = seg(lt, A, B);
@@ -1289,7 +1289,7 @@ function renderFrame(t) {
   // camera FX on the 3D layer: whip-pan at every cut, punch-in on emphasised words, impact shake
   let whip = 0, dir = 1, tr = 0, trDur = .16;
   for (const [i, c] of (res.cuts || []).entries()) {
-    const ty = (Math.round(c * 37) + sc.idx * 3 + i) % 6, D = ty === 2 ? .3 : (ty === 5 ? .35 : .16), d = lt - c;
+    const ty = (res.hard || []).includes(c) ? 0 : (Math.round(c * 37) + sc.idx * 3 + i) % 6, D = ty === 2 ? .3 : (ty === 5 ? .35 : .16), d = lt - c;
     if (Math.abs(d) < D) { const k = 1 - Math.abs(d) / D; if (k * k > whip) { whip = k * k; tr = ty; trDur = D; dir = (i % 2 ? -1 : 1) * Math.sign(d || 1); } }
   }
   // transition styles (no flashes): 0 hard cut · 1 horizontal whip · 2 zoom-through · 3 vertical whip · 4 roll-whip · 5 focus pull
@@ -1308,7 +1308,7 @@ function renderFrame(t) {
   const sl = s1 - s0, u = clamp((lt - s0) / sl), shotN = cutsAll.indexOf(s0) + sc.idx * 7;
   const drift = 1.015 + .075 * u;
   let jz = 0, jx = 0, jy = 0;
-  if (sl > 3.6 && !res.noJump) {
+  if (false) {
     const n = Math.max(2, Math.round(sl / 2.6)), seg2 = sl / n, k = Math.min(n - 1, Math.floor((lt - s0) / seg2)), into = lt - s0 - k * seg2;
     const lvl = kk => (kk % 2) * .14 + (kk % 3 === 2 ? .06 : 0);
     const e = ss(0, .14, into); jz = lerp(lvl(k - 1 < 0 ? 0 : k - 1), lvl(k), k ? e : 1);
