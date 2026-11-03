@@ -199,7 +199,7 @@ function makeJet() {
   const wlg = new THREE.ExtrudeGeometry(wl, { depth: .07, bevelEnabled: false });
   // shock texture
   const shTex = (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d'); const r = rng(5);
-    for (let i = 0; i < 256; i++) { const hgt = 60 + r() * 60; const gr = x.createLinearGradient(0, 128, 0, 128 - hgt); gr.addColorStop(0, `rgba(255,255,255,${.6 + r() * .4})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(i, 128 - hgt, 1, hgt); }
+    for (let i = 0; i < 256; i++) { const hgt = 95 + Math.sin(i * .08) * 12 + r() * 10; const gr = x.createLinearGradient(0, 128, 0, 128 - hgt); gr.addColorStop(0, `rgba(255,255,255,${.75 + r() * .12})`); gr.addColorStop(.35, 'rgba(255,255,255,.25)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(i, 128 - hgt, 1, hgt); }
     const t = new THREE.CanvasTexture(c); return t; })();
   const wings = [], shocks = [];
   for (const s of [1, -1]) {
@@ -411,11 +411,11 @@ function makeSky() {
 /* ============================== WORLD: NIGHT MAP ============================== */
 function makeMap() {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x02050b);
-  scene.fog = new THREE.Fog(0x02050b, 6, 26);
+  scene.fog = new THREE.Fog(0x02050b, 8, 30);
   scene.add(new THREE.HemisphereLight(0x6f8fd0, 0x02040a, .9));
   const moon = new THREE.DirectionalLight(0xbcd0ff, 1.0); moon.position.set(-5, 8, 4); scene.add(moon);
   const ll = (lon, lat, y = 0) => V3(lon + 86, y, -(lat - 27));
-  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(140, 90), new THREE.MeshStandardMaterial({ color: 0x030b16, roughness: .35, metalness: .6 }));
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(140, 90), new THREE.MeshStandardMaterial({ color: 0x03070e, roughness: .7, metalness: .2 }));
   ocean.rotation.x = -Math.PI / 2; ocean.position.y = -.02; scene.add(ocean);
   scene.environment = envFor('night');
   const polys = [
@@ -425,7 +425,7 @@ function makeMap() {
     [[-78.3, 25.2], [-77.7, 25.0], [-77.6, 24.2], [-77.9, 23.8], [-78.4, 24.4]], [[-77.55, 25.08], [-77.25, 25.08], [-77.3, 24.98], [-77.55, 24.98]],
     [[-76.75, 25.55], [-76.55, 25.5], [-76.3, 25.1], [-76.15, 24.7], [-76.25, 24.65], [-76.45, 25.0], [-76.65, 25.35], [-76.8, 25.5]], [[-76.8, 24.6], [-76.6, 24.5], [-76.0, 23.6], [-75.9, 23.65], [-76.5, 24.4]],
   ];
-  const landMat = new THREE.MeshStandardMaterial({ color: 0x0b1420, roughness: .95 });
+  const landMat = new THREE.MeshStandardMaterial({ color: 0x0a1018, roughness: .95 });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x4fa8d8, transparent: true, opacity: .35 });
   for (const p of polys) {
     const geo = new THREE.ExtrudeGeometry(new THREE.Shape(p.map(([lo, la]) => new THREE.Vector2(lo + 86, la - 27))), { depth: .06, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
@@ -441,12 +441,12 @@ function makeMap() {
     const k = .5 + cr() * .5; cc.push(1 * k, .72 * k, .38 * k);
   }
   const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3)); cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
-  scene.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: .045, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  scene.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: .022, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
   // clouds + storm cells over S Florida
   const cl = [], r = rng(33);
-  const addCloud = (x, y, z, sc, op, storm) => { const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false, color: 0x8a96aa }); const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .6, 1); s.userData = { op, storm, base: m.color.clone(), x }; scene.add(s); cl.push(s); };
-  for (let i = 0; i < 160; i++) { const p = ll(-100 + r() * 28, 22 + r() * 13, .55 + r() * .4); addCloud(p.x, p.y, p.z, 1.2 + r() * 2.5, .18 + r() * .12, false); }
-  for (let i = 0; i < 70; i++) { const p = ll(-81.2 + (r() - .5) * 2.2, 26.6 + (r() - .5) * 1.6, .5 + r() * 1.1); addCloud(p.x, p.y, p.z, .8 + r() * 1.5, .35 + r() * .2, true); }
+  const addCloud = (x, y, z, sc, op, storm) => { const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false, color: storm ? 0x6a7486 : 0x3a4352 }); const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .6, 1); s.userData = { op, storm, base: m.color.clone(), x }; scene.add(s); cl.push(s); };
+  for (let i = 0; i < 160; i++) { const p = ll(-100 + r() * 28, 22 + r() * 13, .55 + r() * .4); addCloud(p.x, p.y, p.z, 1.2 + r() * 2.5, .08 + r() * .06, false); }
+  for (let i = 0; i < 70; i++) { const p = ll(-81.2 + (r() - .5) * 2.2, 26.6 + (r() - .5) * 1.6, .5 + r() * 1.1); addCloud(p.x, p.y, p.z, .6 + r() * 1.1, .22 + r() * .12, true); }
   const curve = new THREE.CatmullRomCurve3([[-97.74, 30.27, .07], [-95.2, 29.7, .4], [-91, 28.6, .55], [-87, 27.4, .58], [-84, 26.7, .58], [-81.8, 26.15, .57], [-80.9, 26.4, .5], [-80.13, 26.62, .07]].map(([a, b, y]) => ll(a, b, y)), false, 'centripetal');
   const tube = new THREE.TubeGeometry(curve, 400, .018, 8, false);
   const routeMat = new THREE.MeshBasicMaterial({ color: 0xffc070 }); const route = new THREE.Mesh(tube, routeMat); scene.add(route);
@@ -466,7 +466,7 @@ function makeMap() {
     const fr = rng(Math.floor(t * 12) + 99); const fl = fr() < .2 ? fr() : 0; const fc = ll(-81 + (fr() - .5) * 1.5, 26.6 + (fr() - .5), 0);
     for (const s of cl) { const k = s.userData.storm ? 1 + fl * 6 * Math.exp(-((s.position.x - fc.x) ** 2 + (s.position.z - fc.z) ** 2) / .6) : 1; s.material.color.copy(s.userData.base).multiplyScalar(k); s.position.x = s.userData.x + t * .05; }
     cam.position.copy(o.camPos); cam.lookAt(o.camTarget); cam.fov = o.fov || 32; cam.updateProjectionMatrix();
-    draw(scene, cam, .95, .55);
+    draw(scene, cam, .8, .7);
   }
   return { scene, cam, ll, curve, update };
 }
@@ -769,7 +769,7 @@ const SCENES = {
     const pr = lerp(0, .93, eio(seg(lt, .6, sc.E(0) + .4))) + .07 * eio(seg(lt, s(1) + .8, s(1) + 2.6));
     const head = map.curve.getPointAt(clamp(pr));
     const GA = ll(-80.13, 26.62, .07);
-    const follow = { pos: head.clone().add(V3(-2.4, 1.15, 2.0)), look: head.clone().add(V3(2.6, -.25, -.4)) };
+    const follow = { pos: head.clone().add(V3(-3.2, 2.5, 2.6)), look: head.clone().add(V3(2.6, -.25, -.4)) };
     const p1 = eio(seg(lt, s(1) - .2, s(1) + 3.5));
     const push = eio(seg(lt, s(2), sc.dur));
     const orbit = (lt - s(1)) * .04;
@@ -841,9 +841,9 @@ const SCENES = {
       post(t);
       if (fl.f) { g.fillStyle = `rgba(255,230,210,${fl.f * .06})`; g.fillRect(0, 0, W, H); }
       callout(V3(lerp(-30, -3, seg(lt, sw1 + .5, sw2)), 10.7, 0), cb.cam, -120, -90, 'N722BD', 'FL350  ·  10.7 km', win(lt, sw1 + 1.5, s(2) + .5));
-      callout(V3(.5, 6.5, 0), cb.cam, 220, -60, 'UPDRAFT', 'over 30 m/s  ·  67 mph, straight up', win(lt, s(2) + .4, sw2), CYAN);
-      callout(V3(9, 4.6, 12), cb.cam, 160, 60, '0 °C  FREEZING LEVEL', '≈ 15,000 ft', win(lt, s(3) + .5, sw2), CYAN);
-      callout(V3(-8, 10, 12), cb.cam, -140, -40, '−40 °C', '≈ 33,000 ft', win(lt, s(3) + 1.2, sw2), '#fff');
+      callout(V3(.5, 6.5, 0), cb.cam, 220, -60, 'UPDRAFT', 'over 30 m/s  ·  67 mph, straight up', win(lt, s(2) + .4, s(4) + .1), CYAN);
+      callout(V3(9, 4.6, 12), cb.cam, 160, 60, '0 °C  FREEZING LEVEL', '≈ 15,000 ft', win(lt, s(3) + .5, s(4) + .1), CYAN);
+      callout(V3(-8, 10, 12), cb.cam, -140, -40, '−40 °C', '≈ 33,000 ft', win(lt, s(3) + 1.2, s(4) + .1), '#fff');
       const sa = win(lt, s(4), sw2 + .3, .3, .3);
       T('SUPERCOOLED', W / 2, 560, { s: 110, w: 200, ls: lerp(10, 26, seg(lt, s(4), sw2)), al: 'center', c: ICE, a: sa, glow: 30, glowC: CYAN });
       T('liquid water, far below 0 °C', W / 2, 620, { s: 26, w: 300, ls: 3, al: 'center', a: sa });
@@ -974,7 +974,7 @@ const SCENES = {
       const isFlex = lt >= C;
       const u = isFlex ? seg(lt, C, D) : seg(lt, A, B);
       const cam = lerpShot({ pos: [-7.5, 3.3, 1.5], look: [-.6, -.5, 4.3], fov: 40 }, { pos: [-6.5, 2.7, 2.6], look: [-.6, -.5, 4.6], fov: 38 }, eio(u));
-      storm.update(t, { pitch: -1.0, roll: .7, speed: 420, turb: 1.4, flash: fl, cam, rainK: 1.5, shock: isFlex ? .55 : ss(A + .2, A + 1.4, lt), shockF: isFlex ? .62 : lerp(.32, .45, u),
+      storm.update(t, { pitch: -1.0, roll: .7, speed: 420, turb: 1.4, flash: fl, cam, rainK: 1.5, shock: isFlex ? 0 : ss(A + .2, A + 1.4, lt), shockF: isFlex ? .62 : lerp(.32, .45, u),
         flex: isFlex ? ss(C + .3, C + 3, lt) * (1 + .15 * Math.sin(lt * 18)) : 0, stress: isFlex ? ss(C + 1.5, D, lt) * (.75 + .25 * Math.sin(lt * 9)) : 0, boltK: .6 });
       post(t, { vig: 1.2 }); if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .1})`; g.fillRect(0, 0, W, H); }
       if (!isFlex) T('SHOCK WAVE', W / 2, 820, { s: 30, w: 500, ls: 18, al: 'center', c: '#fff1c9', a: win(lt, A + 1, B + .2), glow: 18, glowC: AMBER });
@@ -1024,8 +1024,8 @@ const SCENES = {
     const A = s(3) - .05, B = s(7) - .05;
     if (lt < A) {
       const u = seg(lt, 0, A);
-      const res = sky.update(t, { mode: 'dusk', speed: 60, hideJet: false, cam: { dist: lerp(110, 90, u), az: 2.85 + u * .15, el: .03, fov: 26, lookOff: [0, 6, 0] } });
-      flare(res.sunWorld, sky.cam, .8); post(t);
+      const res = sky.update(t, { mode: 'dusk', speed: 60, hideJet: false, cam: { dist: lerp(110, 90, u), az: 2.25 + u * .12, el: .03, fov: 26, lookOff: [0, 6, 0] } });
+      flare(res.sunWorld, sky.cam, .6); post(t);
       T('HYPOTHESES, NOT CONCLUSIONS', W / 2, 330, { s: 30, w: 400, ls: 16, al: 'center', a: win(lt, s(0) + .1, A + .2) });
       const items = [['PRELIMINARY REPORT', 'expected within weeks', s(1) + 2.5], ['PROBABLE CAUSE', 'typically 12 to 24 months', s(2) + .1]];
       items.forEach(([a1, b1, ts], i) => { const a = win(lt, ts, A + .2); const y = 790 + i * 0; const x = 150 + i * 620; L([[x, y - 60], [x + 60 * eout(clamp(a * 1.3)), y - 60]], { c: AMBER, lw: 2, a }); T(a1, x, y - 14, { s: 26, w: 600, ls: 6, a }); T(b1, x, y + 28, { s: 24, w: 300, c: 'rgba(255,255,255,.85)', a }); });
@@ -1033,7 +1033,7 @@ const SCENES = {
     }
     if (lt < B) {
       const u = seg(lt, A, B);
-      const cam = { pos: [lerp(-30, 10, u), lerp(105, 95, u), lerp(115, 100, u)], look: [0, 6, 10], fov: 40 };
+      const cam = { pos: [lerp(-40, 0, u), lerp(78, 70, u), lerp(95, 85, u)], look: [0, 6, 14], fov: 42 };
       cb.update(t, lt, { grow: 1, flash: fl, cloudK: 1, parts: 0, far: 600, ring: ss(s(5) - .1, s(5) + 1.2, lt), straight: win(lt, s(4), s(5) + .8, .5, .8), detour: eio(seg(lt, s(5) + .3, s(5) + 4)), detourJet: eio(seg(lt, s(5) + .3, B)), flLine: 0, cam });
       post(t); if (fl.f) { g.fillStyle = `rgba(255,230,210,${fl.f * .06})`; g.fillRect(0, 0, W, H); }
       const [sx, sy] = proj(V3(-10, 10.7, 1), cb.cam); T('×', sx, sy + 14, { s: 50, w: 200, al: 'center', c: RED, a: win(lt, s(4) + .6, s(5) + .8, .3, .8) });
