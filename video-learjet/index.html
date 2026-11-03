@@ -31,7 +31,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* ============================== UTIL ============================== */
 const W = 1920, H = 1080, BAR = 132, DPR = window.devicePixelRatio || 1;
-for (const id of ['gl', 'ov']) { const c = document.getElementById(id); c.width = W * DPR; c.height = H * DPR; }            // 2.39:1 letterbox
+// ?gl=1 → 3D layer at 1080p (upscaled), text/graphics layer at full DPR: ~4× faster 4K renders on CPU-only machines
+const GLDPR = Math.min(DPR, +(new URLSearchParams(location.search).get('gl') || DPR));
+for (const [id, d] of [['gl', GLDPR], ['ov', DPR]]) { const c = document.getElementById(id); c.width = W * d; c.height = H * d; }
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -50,9 +52,9 @@ const AMBER = '#FFB547', CYAN = '#6FD8FF', RED = '#FF4A55', GREEN = '#6CF2B0', I
 
 /* ============================== RENDERER ============================== */
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(DPR); renderer.setSize(W, H, false);
+renderer.setPixelRatio(GLDPR); renderer.setSize(W, H, false);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-const composer = new EffectComposer(renderer); composer.setPixelRatio(DPR); composer.setSize(W, H);
+const composer = new EffectComposer(renderer); composer.setPixelRatio(GLDPR); composer.setSize(W, H);
 const rpass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera()); composer.addPass(rpass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(W / 2, H / 2), .7, .55, .8); composer.addPass(bloom);
 composer.addPass(new OutputPass());

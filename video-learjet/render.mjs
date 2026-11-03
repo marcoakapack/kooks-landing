@@ -32,7 +32,8 @@ const browser = await chromium.launch(process.platform === 'darwin' ? { channel:
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: SCALE });
 page.on('console', m => { if (m.type() === 'error') console.error('[page]', m.text()); });
 page.on('pageerror', e => console.error('[pageerror]', e.message));
-await page.goto(`http://localhost:${port}/index.html`);
+const GLQ = arg('gl', process.env.GL || '');   // --gl 1: render the 3D at 1080p and only the text at 4K
+await page.goto(`http://localhost:${port}/index.html${GLQ ? '?gl=' + GLQ : ''}`);
 await page.waitForFunction(() => window.READY === true, null, { timeout: 60000 });
 
 const timingsPath = fs.existsSync(path.join(ROOT, 'timings_video.json')) ? path.join(ROOT, 'timings_video.json') : path.join(ROOT, 'audio', 'timings.json');
