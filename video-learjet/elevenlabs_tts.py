@@ -11,6 +11,14 @@ Uses only the Python standard library.
 import base64, json, os, re, sys, urllib.request, urllib.error, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent
+# also read the key from .env.local / .env next to this script (both are git-ignored)
+for envf in (".env.local", ".env"):
+    f = ROOT / envf
+    if f.exists():
+        for ln in f.read_text(encoding="utf-8").splitlines():
+            if "=" in ln and not ln.lstrip().startswith("#"):
+                k, v = ln.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a documentary narrator voice
 MODEL_ID = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
