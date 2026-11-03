@@ -694,7 +694,7 @@ function setup(timings) {
     else { let c = 0; sents.forEach(x => { st.push(LEAD + c / CPS); c += x.length + 1; }); speech = s.text.length / CPS; }
     const lead = s.id === 'hook' ? LEAD : LEAD + 2.2;            // chapter card breathes before the voice
     st = st.map(v => v - LEAD + lead);
-    const tail = s.id === 'outro' ? 6 : TAIL, dur = lead + speech + tail;
+    const tail = s.id === 'outro' ? 13 : TAIL, dur = lead + speech + tail;
     const S = k => st[clamp(k, 0, st.length - 1)], E = k => k + 1 < st.length ? st[k + 1] : lead + speech;
     SC.push({ ...s, idx: i, start: TOTAL, dur, st, sents, S, E, speech, lead }); TOTAL += dur;
   });
@@ -1053,9 +1053,13 @@ const SCENES = {
     for (let i = 0; i < 9; i++) { const k = a * ss(B + .5 + i * .22, B + 1.4 + i * .22, lt); const rise = (lt - B) * 6; const x = W / 2 + (i - 4) * 96, y = 520 - rise * (.6 + (i % 3) * .15); const f2 = 1 + .08 * Math.sin(lt * 7 + i * 2.1);
       const rg = g.createRadialGradient(x, y, 0, x, y, 48 * f2); rg.addColorStop(0, `rgba(255,220,150,${.95 * k})`); rg.addColorStop(.22, `rgba(255,170,70,${.45 * k})`); rg.addColorStop(1, 'rgba(255,150,50,0)'); g.fillStyle = rg; g.beginPath(); g.arc(x, y, 50, 0, 7); g.fill(); }
     T('IN MEMORY', W / 2, 360, { s: 24, w: 600, ls: 16, al: 'center', c: AMBER, a });
-    T('of the nine lives lost', W / 2, 700, { s: 56, w: 200, ls: 1, al: 'center', a });
-    T('Greenacres, Florida  ·  November 1, 2026', W / 2, 760, { s: 22, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.65)', a });
-    T('Sources: NTSB · FAA · Flightradar24 · LiveATC · CNN · CBS12 · NBC Miami · WPTV', W / 2, 900, { s: 16, w: 300, ls: 1, al: 'center', c: 'rgba(255,255,255,.45)', a: a * ss(B + 3, B + 4, lt) });
+    const a1 = a * (1 - ss(B + 5, B + 5.8, lt)), a2 = a * ss(B + 5.8, B + 7, lt);
+    T('of the nine lives lost', W / 2, 700, { s: 56, w: 200, ls: 1, al: 'center', a: a1 });
+    T('Greenacres, Florida  ·  November 1, 2026', W / 2, 760, { s: 22, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.65)', a: a1 });
+    const rows = [['Jeff Gregory, 55', 'Nathalia Gadelha Filgueiras, 20'], ['Adam Robinson', 'Helen Robinson', 'Emma, 4', 'Charlie, 2'], ['Anita Maria Cetina', 'Rachael Reed', 'Charmi Fehr']];
+    rows.forEach((r, i) => T(r.join('     ·     '), W / 2, 660 + i * 62, { s: 32, w: 200, ls: 1.5, al: 'center', a: a2 * ss(B + 5.8 + i * .5, B + 6.8 + i * .5, lt) }));
+    T('Greenacres, Florida  ·  November 1, 2026', W / 2, 870, { s: 20, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.6)', a: a2 * ss(B + 7.5, B + 8.5, lt) });
+    T('Sources: NTSB · FAA · Flightradar24 · LiveATC · CNN · CBS12 · NBC Miami · WPTV', W / 2, 920, { s: 16, w: 300, ls: 1, al: 'center', c: 'rgba(255,255,255,.45)', a: a * ss(B + 9, B + 10, lt) });
     post(t);
     return { cuts: [], fadeOut: 2.5 };
   },
