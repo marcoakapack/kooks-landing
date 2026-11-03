@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "playwright": "^1.48.0"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0"
   }
 }

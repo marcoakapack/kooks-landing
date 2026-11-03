@@ -9,3 +9,5 @@ out/*
 audio_george/
 !out/final_web.mp4
 !out/legendas.srt
+!out/final_audio.m4a
+out/parts4k/

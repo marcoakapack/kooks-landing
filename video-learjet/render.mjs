@@ -11,12 +11,12 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const FPS = +arg('fps', 24);
+const FPS = +arg('fps', process.env.FPS || 24);
 const OUT = path.resolve(ROOT, arg('out', 'out/video_silent.mp4'));
 const STILLS = arg('stills', null);
 const SCALE = +arg('scale', process.env.SCALE || 1);   // 2 → 3840×2160 (4K)
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
+const MIME = { '.otf': 'font/otf', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
 const server = http.createServer((req, res) => {
   const p = path.join(ROOT, decodeURIComponent(req.url.split('?')[0]));
   if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
@@ -27,14 +27,15 @@ const port = server.address().port;
 
 // Linux servers have no GPU: use SwiftShader. On a Mac/PC, use the real GPU (much faster).
 const GPU_ARGS = process.platform === 'linux' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist', '--enable-gpu'];
-const browser = await chromium.launch({ args: GPU_ARGS });
+// macOS: full Chromium build (new headless) so WebGL runs on the Metal GPU
+const browser = await chromium.launch(process.platform === 'darwin' ? { channel: 'chromium', args: GPU_ARGS } : { args: GPU_ARGS });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: SCALE });
 page.on('console', m => { if (m.type() === 'error') console.error('[page]', m.text()); });
 page.on('pageerror', e => console.error('[pageerror]', e.message));
 await page.goto(`http://localhost:${port}/index.html`);
 await page.waitForFunction(() => window.READY === true, null, { timeout: 60000 });
 
-const timingsPath = path.join(ROOT, 'audio', 'timings.json');
+const timingsPath = fs.existsSync(path.join(ROOT, 'timings_video.json')) ? path.join(ROOT, 'timings_video.json') : path.join(ROOT, 'audio', 'timings.json');
 let timeline;
 if (fs.existsSync(timingsPath)) {
   const tm = JSON.parse(fs.readFileSync(timingsPath, 'utf8'));
@@ -57,9 +58,17 @@ if (STILLS) {
   await browser.close(); server.close(); process.exit(0);
 }
 
+if (process.argv.includes('--cutsonly')) {   // only collect cut times for the sound design (no frames written)
+  for (let t = 0; t < timeline.total; t += 1 / FPS) await page.evaluate(t => window.renderFrame(t), t);
+  fs.mkdirSync(path.join(ROOT, 'out', 'parts'), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, 'out', 'parts', 'all.cuts.json'), JSON.stringify(await page.evaluate(() => [...window.CUTS_ABS].sort((a, b) => a - b))));
+  console.log('cuts written'); await browser.close(); server.close(); process.exit(0);
+}
 const F0 = Math.round(+arg('from', 0) * FPS), F1 = Math.min(Math.round(+arg('to', timeline.total) * FPS), Math.floor(timeline.total * FPS));
 const N = F1 - F0, from = F0 / FPS;
-const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
+let FFMPEG = 'ffmpeg'; try { FFMPEG = createRequire(import.meta.url)('ffmpeg-static') || 'ffmpeg'; } catch {}
+if (process.env.FFMPEG) FFMPEG = process.env.FFMPEG;
+const ff = spawn(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
   '-c:v', 'libx264', '-preset', 'medium', '-crf', SCALE > 1 ? '17' : '19', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUT], { stdio: ['pipe', 'inherit', 'inherit'] });
 const t0 = Date.now();
 for (let i = 0; i < N; i++) {
