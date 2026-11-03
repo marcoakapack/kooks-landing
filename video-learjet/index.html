@@ -46,10 +46,11 @@ const composer = new EffectComposer(renderer); composer.setPixelRatio(1); compos
 const rpass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera()); composer.addPass(rpass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(W / 2, H / 2), .7, .55, .8); composer.addPass(bloom);
 composer.addPass(new OutputPass());
-function draw(scene, cam, b = .7, th = .8) { rpass.scene = scene; rpass.camera = cam; bloom.strength = b; bloom.threshold = th; composer.render(); }
+function draw(scene, cam, b = .7, th = .8) { rpass.scene = scene; rpass.camera = cam; bloom.enabled = b > 0; bloom.strength = b; bloom.threshold = th; composer.render(); }
 function clearGL() { renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); }
 const pmrem = new THREE.PMREMGenerator(renderer);
 const g = document.getElementById('ov').getContext('2d');
+const GL = document.getElementById('gl');
 
 /* ============================== 2D HELPERS ============================== */
 function T(str, x, y, o = {}) {
@@ -84,24 +85,25 @@ function callout(v, cam, dx, dy, title, sub, a, c = '#fff') {
   if (sub) T(sub, xx, y2 + 44, { s: 22, w: 300, ls: .5, c: 'rgba(255,255,255,.82)', al, a });
 }
 function lowerThird(title, sub, a) {
-  if (a <= .002) return; const k = eout(clamp(a * 1.3)), x = 150, y = 842;
-  L([[x, y - 46], [x + 70 * k, y - 46]], { c: AMBER, lw: 3, a });
-  T(title, x, y, { s: 34, w: 600, ls: 6, a });
-  if (sub) T(sub, x, y + 44, { s: 25, w: 300, ls: 1, c: 'rgba(255,255,255,.85)', a });
+  if (a <= .002) return; const k = eout(clamp(a * 1.3)), x = 150 - (1 - k) * 60, y = 262;
+  g.save(); g.globalAlpha = .55 * a; g.fillStyle = 'rgba(0,8,20,.55)'; g.fillRect(x - 24, y - 70, 40 + 820 * k, 132); g.restore();
+  L([[x, y - 46], [x + 90 * k, y - 46]], { c: AMBER, lw: 4, a });
+  T(title, x, y, { s: 36, w: 700, ls: 5, a });
+  if (sub) T(sub, x + (1 - k) * 30, y + 42, { s: 25, w: 400, ls: 1, c: 'rgba(255,255,255,.88)', a: a * k });
 }
 function radio(label, text, a) {
-  if (a <= .002) return;
-  T(label, W / 2, 800, { s: 18, w: 600, ls: 5, al: 'center', c: AMBER, a });
-  T(text, W / 2, 858, { s: 40, w: 300, it: true, al: 'center', a });
-  // waveform
-  const pts = []; for (let i = 0; i < 60; i++) { const x = W / 2 - 150 + i * 5; pts.push([x, 770 + Math.sin(i * .9 + a * 40) * 6 * Math.sin(i / 60 * Math.PI) * (Math.sin(i * 2.3 + a * 13) + 1)]); }
+  if (a <= .002) return; const k = eout(clamp(a * 1.3));
+  T(label, W / 2, 232, { s: 18, w: 600, ls: 5, al: 'center', c: AMBER, a });
+  T(text, W / 2, 300 + (1 - k) * 20, { s: 46, w: 300, it: true, al: 'center', a });
+  const pts = []; for (let i = 0; i < 60; i++) { const x = W / 2 - 150 + i * 5; pts.push([x, 196 + Math.sin(i * .9 + a * 40) * 6 * Math.sin(i / 60 * Math.PI) * (Math.sin(i * 2.3 + a * 13) + 1)]); }
   L(pts, { c: AMBER, lw: 1.5, a: a * .7 });
 }
 function bigNum(str, unit, x, y, a, o = {}) {
   if (a <= .002) return; const sz = o.s || 190;
+  const z = lerp(.82, 1, ebk(clamp(a))); g.save(); g.translate(x, y); g.scale(z, z); g.translate(-x, -y);
   const w = T(str, x, y, { s: sz, w: 200, ls: -2, al: o.al || 'left', c: o.c || '#fff', a, glow: o.glow, glowC: o.glowC });
   if (unit) T(unit, o.al === 'center' ? x : (o.al === 'right' ? x : x + 6), y + 56, { s: 24, w: 500, ls: 7, al: o.al || 'left', c: o.uc || 'rgba(255,255,255,.8)', a });
-  return w;
+  g.restore(); return w;
 }
 
 /* grain / vignette / letterbox */
@@ -294,17 +296,17 @@ function makeBolt(seed) {
 /* ============================== WORLD: STORM ============================== */
 function makeStorm() {
   const scene = new THREE.Scene();
-  const fogC = new THREE.Color(0x56606c), flashC = new THREE.Color(0xdbe5f5);
-  scene.background = fogC.clone(); scene.fog = new THREE.FogExp2(fogC.clone(), .003);
+  const fogC = new THREE.Color(0x98a5b5), flashC = new THREE.Color(0xf0f4ff);
+  scene.background = fogC.clone(); scene.fog = new THREE.FogExp2(fogC.clone(), .0026);
   scene.environment = envFor('stormEnv');
-  const hemi = new THREE.HemisphereLight(0xdfe7f2, 0x4a525c, 2.0); scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xf2f5fa, 1.6); key.position.set(30, 80, 30); scene.add(key);
+  const hemi = new THREE.HemisphereLight(0xf2f6fc, 0x6a7380, 2.4); scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xfff6e8, 2.2); key.position.set(30, 80, 30); scene.add(key);
   const flashL = new THREE.DirectionalLight(0xe8eeff, 0); flashL.position.set(-40, 60, -80); scene.add(flashL);
   const jet = makeJet(); scene.add(jet.group);
   const cam = new THREE.PerspectiveCamera(40, W / H, .3, 5000);
   const r = rng(7), clouds = []; const B = { x: 380, y: 200, z: 280 };
   for (let i = 0; i < 240; i++) {
-    const shade = .45 + r() * .38; const col = new THREE.Color(shade * .95, shade * .98, shade * 1.03);
+    const shade = .62 + r() * .36; const col = new THREE.Color(shade * .95, shade * .98, shade * 1.03);
     const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[i % 3], color: col.clone(), transparent: true, opacity: .55 + r() * .4, depthWrite: false });
     const s = new THREE.Sprite(m); const sc = 70 + r() * 140; s.scale.set(sc, sc * .8, 1);
     s.userData = { base: V3((r() * 2 - 1) * B.x, (r() * 2 - 1) * B.y, (r() * 2 - 1) * B.z), col, op: m.opacity }; scene.add(s); clouds.push(s);
@@ -351,7 +353,7 @@ function makeStorm() {
       const k = clamp(o.flash.f * 1.3) * (o.boltK ?? 1); b.userData.core.opacity = k; b.userData.halo.opacity = k * .22;
     }
     scene.background.copy(fogC).multiplyScalar(o.dark ?? 1).lerp(flashC, fl * .55); scene.fog.color.copy(scene.background);
-    flashL.intensity = fl * 6; hemi.intensity = 2.0 * (o.dark ?? 1); key.intensity = 1.6 * (o.dark ?? 1);
+    flashL.intensity = fl * 6; hemi.intensity = 2.4 * (o.dark ?? 1); key.intensity = 2.2 * (o.dark ?? 1);
     draw(scene, cam, o.bloom ?? .75, .82);
   }
   return { scene, cam, jet, update };
@@ -414,6 +416,57 @@ function makeSky() {
   return { scene, cam, jet, update };
 }
 
+/* ============================== LOCAL: GREENACRES STREET LEVEL ============================== */
+// Illustrative street map around the crash site (Military Trail near 10th Ave N, Greenacres).
+// Map units: 1 = 1 degree. Major roads at approximate real positions; residential grid is generic.
+function makeLocal(ll) {
+  const grp = new THREE.Group(); const mats = [];
+  const M = (c, op = 1) => { const m = new THREE.MeshStandardMaterial({ color: c, roughness: .9, transparent: true, opacity: 0, depthWrite: true }); m.userData.op = op; mats.push(m); return m; };
+  const rect = (lo0, la0, lo1, la1, y, mat) => { const a = ll(lo0, la0), b = ll(lo1, la1); const m = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(b.x - a.x), Math.abs(b.z - a.z)), mat); m.rotation.x = -Math.PI / 2; m.position.set((a.x + b.x) / 2, y, (a.z + b.z) / 2); grp.add(m); return m; };
+  rect(-80.24, 26.54, -80.052, 26.74, .0602, M(0x8a9378));               // suburban ground
+  rect(-80.052, 26.54, -80.0435, 26.76, .0603, M(0x3f8fbf));             // Lake Worth Lagoon
+  rect(-80.0435, 26.54, -80.0362, 26.76, .0603, M(0xa7a98c));            // barrier island
+  rect(-80.0372, 26.54, -80.0355, 26.76, .0604, M(0xe9dfbf));            // beach
+  rect(-80.0355, 26.54, -79.98, 26.76, .0603, M(0x2f84b8));              // Atlantic (over the coarse coast)
+  const road = M(0xd9d6cc), hwy = M(0xf1eee6), minor = M(0xc4c2b8, .85);
+  const NS = (lo, w, mat, la0 = 26.55, la1 = 26.73) => rect(lo - w / 2, la0, lo + w / 2, la1, .0606, mat);
+  const EW = (la, w, mat, lo0 = -80.235, lo1 = -80.053) => rect(lo0, la - w / 2, lo1, la + w / 2, .0606, mat);
+  // residential grid (generic)
+  const r = rng(404);
+  for (let la = 26.553; la < 26.728; la += .0026) for (let lo = -80.232; lo < -80.056; lo += .018) if (r() < .82) EW(la + (r() - .5) * .0004, .00012, minor, lo, lo + .018 * (.6 + r() * .4));
+  for (let lo = -80.232; lo < -80.056; lo += .0045) for (let la = 26.553; la < 26.728; la += .03) if (r() < .7) NS(lo + (r() - .5) * .0006, .00012, minor, la, la + .03 * (.5 + r() * .5));
+  // arterials (approximate real positions)
+  [-80.1157, -80.1435, -80.0885, -80.1015, -80.1295, -80.1712, -80.2005].forEach(lo => NS(lo, lo === -80.1157 ? .00042 : .00032, road));
+  [26.6365, 26.6175, 26.6505, 26.6015, 26.666, 26.587].forEach(la => EW(la, la === 26.6365 ? .00036 : .0003, road));
+  NS(-80.0745, .0008, hwy);                                                 // I-95
+  // houses (instanced)
+  const N = 14000, box = new THREE.BoxGeometry(1, 1, 1), hm = new THREE.MeshStandardMaterial({ roughness: .8, transparent: true, opacity: 0 }); hm.userData.op = 1; mats.push(hm);
+  const inst = new THREE.InstancedMesh(box, hm, N); const mtx = new THREE.Matrix4(), col = new THREE.Color(); let n = 0;
+  const pal = [0xe9e4da, 0xd8cfc0, 0xcfd6dc, 0xb9b2a7, 0xe2d2b6, 0xa9b4bd];
+  while (n < N) {
+    const far = r() < .3; const lo = far ? -80.2 + r() * .145 : -80.15 + r() * .07, la = far ? 26.585 + r() * .11 : 26.61 + r() * .05;
+    const nearRoad = [-80.1157, -80.1435, -80.0885, -80.1015, -80.1295, -80.0745].some(x => Math.abs(lo - x) < .0006) || [26.6365, 26.6175, 26.6505, 26.6015].some(y => Math.abs(la - y) < .0005);
+    if (nearRoad) continue;
+    const p = ll(lo, la, .0606); const w = .00009 + r() * .00006;
+    mtx.makeScale(w, .00004 + r() * .00003, w * (1.2 + r() * .5)); mtx.setPosition(p.x, .0606 + .00002, p.z);
+    inst.setMatrixAt(n, mtx); inst.setColorAt(n, col.setHex(pal[n % pal.length])); n++;
+  }
+  grp.add(inst);
+  // PBI airport runway
+  rect(-80.113, 26.6828, -80.0775, 26.6842, .0606, M(0x5d6166));
+  rect(-80.112, 26.676, -80.08, 26.69, .06045, M(0x9fa78d));
+  // crater + debris (illustrative)
+  const S = ll(-80.1157, 26.634, .0607);
+  const crater = new THREE.Mesh(new THREE.CircleGeometry(.00009, 40), M(0x2b2420)); crater.rotation.x = -Math.PI / 2; crater.position.copy(S); grp.add(crater);
+  const scorch = new THREE.Mesh(new THREE.CircleGeometry(.00032, 40), M(0x4a4038, .5)); scorch.rotation.x = -Math.PI / 2; scorch.position.copy(S).add(V3(.00008, -.00001, -.00006)); grp.add(scorch);
+  const deb = new THREE.InstancedMesh(box, M(0x3a3632), 160); const dr = rng(77);
+  for (let i = 0; i < 160; i++) { const a = dr() * 6.283, d = Math.pow(dr(), 1.6) * .0009; const sz = .00001 + dr() * .00002; mtx.makeScale(sz, sz * .6, sz); mtx.setPosition(S.x + Math.cos(a) * d * 1.3, .0607, S.z + Math.sin(a) * d); deb.setMatrixAt(i, mtx); }
+  grp.add(deb);
+  grp.visible = false;
+  function set(k) { grp.visible = k > .002; mats.forEach(m => { m.opacity = k * m.userData.op; m.transparent = k < .999; }); }
+  return { group: grp, set, SITE: S };
+}
+
 /* ============================== WORLD: NIGHT MAP ============================== */
 function makeMap() {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0xa9c8e6);
@@ -425,7 +478,7 @@ function makeMap() {
   ocean.rotation.x = -Math.PI / 2; ocean.position.y = -.02; scene.add(ocean);
   scene.environment = envFor('day');
   const polys = [
-    [[-110, 16], [-96.4, 18.7], [-96.1, 19.4], [-96.6, 20.2], [-97.2, 20.7], [-97.7, 21.8], [-97.8, 22.8], [-97.6, 24.3], [-97.4, 25.4], [-97.2, 25.95], [-97.4, 26.8], [-97.3, 27.6], [-96.8, 28.2], [-95.9, 28.6], [-95.0, 29.2], [-94.7, 29.4], [-93.8, 29.7], [-93.0, 29.75], [-92.2, 29.55], [-91.3, 29.3], [-90.6, 29.1], [-90.0, 29.15], [-89.4, 28.95], [-89.2, 29.3], [-89.6, 29.7], [-89.5, 30.1], [-89.0, 30.35], [-88.4, 30.38], [-88.0, 30.25], [-87.5, 30.32], [-86.6, 30.4], [-86.0, 30.25], [-85.5, 29.95], [-85.1, 29.65], [-84.6, 29.85], [-84.1, 30.05], [-83.7, 29.9], [-83.2, 29.4], [-82.8, 29.0], [-82.75, 28.4], [-82.85, 27.9], [-82.65, 27.45], [-82.4, 27.0], [-82.15, 26.65], [-81.85, 26.3], [-81.75, 25.9], [-81.4, 25.6], [-81.1, 25.25], [-80.6, 25.15], [-80.35, 25.35], [-80.25, 25.75], [-80.1, 26.3], [-80.04, 26.8], [-80.15, 27.3], [-80.35, 27.85], [-80.6, 28.4], [-80.6, 28.65], [-80.85, 29.1], [-81.15, 29.7], [-81.35, 30.3], [-81.4, 30.75], [-81.25, 31.4], [-80.95, 31.95], [-80.5, 32.4], [-79.9, 32.8], [-79.2, 33.3], [-78.6, 33.85], [-77.9, 34.0], [-77.3, 34.6], [-76.5, 34.75], [-75.6, 35.3], [-75.8, 36.2], [-76.0, 37.0], [-75.7, 38.0], [-75.0, 38.8], [-74, 44], [-110, 44]],
+    [[-110, 16], [-96.4, 18.7], [-96.1, 19.4], [-96.6, 20.2], [-97.2, 20.7], [-97.7, 21.8], [-97.8, 22.8], [-97.6, 24.3], [-97.4, 25.4], [-97.2, 25.95], [-97.4, 26.8], [-97.3, 27.6], [-96.8, 28.2], [-95.9, 28.6], [-95.0, 29.2], [-94.7, 29.4], [-93.8, 29.7], [-93.0, 29.75], [-92.2, 29.55], [-91.3, 29.3], [-90.6, 29.1], [-90.0, 29.15], [-89.4, 28.95], [-89.2, 29.3], [-89.6, 29.7], [-89.5, 30.1], [-89.0, 30.35], [-88.4, 30.38], [-88.0, 30.25], [-87.5, 30.32], [-86.6, 30.4], [-86.0, 30.25], [-85.5, 29.95], [-85.1, 29.65], [-84.6, 29.85], [-84.1, 30.05], [-83.7, 29.9], [-83.2, 29.4], [-82.8, 29.0], [-82.75, 28.4], [-82.85, 27.9], [-82.65, 27.45], [-82.4, 27.0], [-82.15, 26.65], [-81.85, 26.3], [-81.75, 25.9], [-81.4, 25.6], [-81.1, 25.25], [-80.6, 25.15], [-80.35, 25.35], [-80.25, 25.75], [-80.12, 26.1], [-80.075, 26.35], [-80.055, 26.5], [-80.036, 26.62], [-80.03, 26.75], [-80.06, 26.95], [-80.15, 27.3], [-80.35, 27.85], [-80.6, 28.4], [-80.6, 28.65], [-80.85, 29.1], [-81.15, 29.7], [-81.35, 30.3], [-81.4, 30.75], [-81.25, 31.4], [-80.95, 31.95], [-80.5, 32.4], [-79.9, 32.8], [-79.2, 33.3], [-78.6, 33.85], [-77.9, 34.0], [-77.3, 34.6], [-76.5, 34.75], [-75.6, 35.3], [-75.8, 36.2], [-76.0, 37.0], [-75.7, 38.0], [-75.0, 38.8], [-74, 44], [-110, 44]],
     [[-84.95, 21.85], [-84.0, 22.65], [-83.2, 22.95], [-82.5, 23.1], [-81.6, 23.15], [-80.6, 23.05], [-79.6, 22.6], [-78.6, 22.35], [-77.6, 21.85], [-76.5, 21.2], [-75.6, 21.1], [-74.6, 20.6], [-74.15, 20.25], [-74.5, 20.0], [-75.7, 19.9], [-77.4, 19.85], [-77.6, 20.4], [-78.4, 21.4], [-79.5, 21.6], [-80.5, 21.8], [-81.5, 22.2], [-82.2, 22.4], [-83.4, 22.2], [-84.3, 21.9]],
     [[-79.0, 26.7], [-78.2, 26.75], [-77.9, 26.6], [-78.6, 26.5]], [[-77.4, 27.0], [-77.0, 26.6], [-77.2, 25.9], [-77.4, 26.2], [-77.6, 26.8]],
     [[-78.3, 25.2], [-77.7, 25.0], [-77.6, 24.2], [-77.9, 23.8], [-78.4, 24.4]], [[-77.55, 25.08], [-77.25, 25.08], [-77.3, 24.98], [-77.55, 24.98]],
@@ -452,29 +505,34 @@ function makeMap() {
   const cl = [], r = rng(33);
   const addCloud = (x, y, z, sc, op, storm) => { const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false, color: storm ? 0xe8ecf2 : 0xffffff }); const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .6, 1); s.userData = { op, storm, base: m.color.clone(), x }; scene.add(s); cl.push(s); };
   for (let i = 0; i < 160; i++) { const p = ll(-100 + r() * 28, 22 + r() * 13, .35 + r() * .25); addCloud(p.x, p.y, p.z, .5 + r() * 1.1, .2 + r() * .15, false); }
-  for (let i = 0; i < 70; i++) { const p = ll(-81.2 + (r() - .5) * 2.2, 26.6 + (r() - .5) * 1.6, .5 + r() * 1.1); addCloud(p.x, p.y, p.z, .45 + r() * .8, .75 + r() * .2, true); }
-  const curve = new THREE.CatmullRomCurve3([[-97.74, 30.27, .07], [-95.2, 29.7, .4], [-91, 28.6, .55], [-87, 27.4, .58], [-84, 26.7, .58], [-81.8, 26.15, .57], [-80.9, 26.4, .5], [-80.13, 26.62, .07]].map(([a, b, y]) => ll(a, b, y)), false, 'centripetal');
+  for (let i = 0; i < 70; i++) { const p = ll(-81.4 + (r() - .5) * 1.8, 26.6 + (r() - .5) * 1.6, .5 + r() * 1.1); addCloud(p.x, p.y, p.z, .45 + r() * .8, .75 + r() * .2, true); }
+  const curve = new THREE.CatmullRomCurve3([[-97.74, 30.27, .07], [-95.2, 29.7, .4], [-91, 28.6, .55], [-87, 27.4, .58], [-84, 26.7, .58], [-81.8, 26.15, .57], [-80.7, 26.5, .5], [-80.1157, 26.634, .062]].map(([a, b, y]) => ll(a, b, y)), false, 'centripetal');
   const tube = new THREE.TubeGeometry(curve, 400, .018, 8, false);
   const routeMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a }); const route = new THREE.Mesh(tube, routeMat); scene.add(route);
   const routeGlow = new THREE.Mesh(new THREE.TubeGeometry(curve, 400, .06, 8, false), new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(routeGlow);
   const idxN = tube.index.count, idxG = routeGlow.geometry.index.count;
-  const plan = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3([ll(-80.13, 26.62, .07), ll(-78.5, 26.1, .4), ll(-76.7, 25.47, .07)]).getPoints(80)), new THREE.LineDashedMaterial({ color: 0x9fb3cc, dashSize: .06, gapSize: .06, transparent: true, opacity: 0 }));
+  const plan = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3([ll(-80.1157, 26.634, .07), ll(-78.5, 26.1, .4), ll(-76.7, 25.47, .07)]).getPoints(80)), new THREE.LineDashedMaterial({ color: 0x9fb3cc, dashSize: .06, gapSize: .06, transparent: true, opacity: 0 }));
   plan.computeLineDistances(); scene.add(plan);
   const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT_TEX, color: 0xffe0b0, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); head.scale.set(.35, .35, 1); scene.add(head);
-  const rings = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.RingGeometry(.96, 1, 96), new THREE.MeshBasicMaterial({ color: 0xff3a48, transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = -Math.PI / 2; m.position.copy(ll(-80.13, 26.62, .075)); scene.add(m); return m; });
+  const rings = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.RingGeometry(.96, 1, 96), new THREE.MeshBasicMaterial({ color: 0xff3a48, transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = -Math.PI / 2; m.position.copy(ll(-80.1157, 26.634, .0645)); m.renderOrder = 6; scene.add(m); return m; });
+  const local = makeLocal(ll); scene.add(local.group);
   const cam = new THREE.PerspectiveCamera(32, W / H, .02, 200);
   function update(t, o) {
     const pr = clamp(o.prog); route.geometry.setDrawRange(0, Math.floor(idxN * pr / 6) * 6); routeGlow.geometry.setDrawRange(0, Math.floor(idxG * pr / 6) * 6);
     head.position.copy(curve.getPointAt(pr)); head.material.opacity = pr > .001 && pr < .999 ? 1 : 0;
     plan.material.opacity = o.plan || 0;
-    rings.forEach((m, i) => { const ph = ((t * .45 + i / 3) % 1); const s = .05 + ph * .6; m.scale.set(s, s, s); m.material.opacity = (1 - ph) * (o.crash || 0); });
+    const rs = o.ringS ?? 1; rings.forEach((m, i) => { const ph = ((t * .45 + i / 3) % 1); const s = (.05 + ph * .6) * rs; m.scale.set(s, s, s); m.material.opacity = (1 - ph) * (o.crash || 0); });
+    local.set(o.local || 0, t); route.visible = routeGlow.visible = head.visible = (o.local || 0) < .2 && (o.route ?? true);
     // storm flicker
     const fr = rng(Math.floor(t * 12) + 99); const fl = fr() < .2 ? fr() : 0; const fc = ll(-81 + (fr() - .5) * 1.5, 26.6 + (fr() - .5), 0);
     for (const s of cl) { const k = s.userData.storm ? 1 + fl * 1.5 * Math.exp(-((s.position.x - fc.x) ** 2 + (s.position.z - fc.z) ** 2) / .6) : 1; s.material.color.copy(s.userData.base).multiplyScalar(k); s.position.x = s.userData.x + t * .05; }
-    cam.position.copy(o.camPos); cam.lookAt(o.camTarget); cam.fov = o.fov || 32; cam.updateProjectionMatrix();
-    draw(scene, cam, .35, .92);
+    cam.position.copy(o.camPos); cam.lookAt(o.camTarget); cam.fov = o.fov || 32;
+    const hh = Math.max(.002, cam.position.y - .06); cam.near = Math.max(.0002, hh * .05); cam.far = Math.max(60, hh * 400); cam.updateProjectionMatrix();
+    scene.fog.near = Math.min(10, hh * 6); scene.fog.far = Math.min(34, hh * 30 + .5);
+    for (const s of cl) s.material.opacity = s.userData.op * (1 - ss(hh * .45, hh * .95, s.position.y - .06)) * (o.cloudK ?? 1);
+    draw(scene, cam, 0, .92);
   }
-  return { scene, cam, ll, curve, update };
+  return { scene, cam, ll, curve, update, local, SITE: ll(-80.1157, 26.634, .0607) };
 }
 
 /* ============================== WORLD: CUMULONIMBUS (1 unit = 1 km) ============================== */
@@ -692,11 +750,22 @@ function setup(timings) {
     const tm = timings && timings.scenes && timings.scenes[i];
     if (tm && tm.sentence_starts && tm.sentence_starts.length === sents.length) { st = tm.sentence_starts.map(v => LEAD + v); speech = tm.duration; }
     else { let c = 0; sents.forEach(x => { st.push(LEAD + c / CPS); c += x.length + 1; }); speech = s.text.length / CPS; }
-    const lead = s.id === 'hook' ? LEAD : LEAD + 2.2;            // chapter card breathes before the voice
+    const lead = s.id === 'hook' ? LEAD : LEAD + 1.3;            // short chapter card before the voice
     st = st.map(v => v - LEAD + lead);
-    const tail = s.id === 'outro' ? 13 : TAIL, dur = lead + speech + tail;
+    const tail = s.id === 'outro' ? 12 : TAIL, dur = lead + speech + tail;
     const S = k => st[clamp(k, 0, st.length - 1)], E = k => k + 1 < st.length ? st[k + 1] : lead + speech;
-    SC.push({ ...s, idx: i, start: TOTAL, dur, st, sents, S, E, speech, lead }); TOTAL += dur;
+    // word timings: real (ElevenLabs alignment) or estimated inside each sentence
+    const toks = s.text.split(/\s+/); let words = [];
+    if (tm && tm.word_starts && tm.word_starts.length === toks.length) words = toks.map((w, j) => ({ w, t: lead + tm.word_starts[j], e: lead + (tm.word_ends ? tm.word_ends[j] : tm.word_starts[j] + .3) }));
+    else {
+      let j = 0;
+      sents.forEach((sen, k) => {
+        const sw = sen.split(/\s+/), a = S(k), b = E(k), span = Math.min(b - a, sen.length / CPS); let off = 0;
+        sw.forEach(w => { const t0 = a + span * off / sen.length; off += w.length + 1; words.push({ w: toks[j++] || w, t: t0, e: a + span * Math.min(1, (off - 1) / sen.length) }); });
+      });
+    }
+    words.forEach(o => { o.k = emph(o.w); });
+    SC.push({ ...s, idx: i, start: TOTAL, dur, st, sents, S, E, speech, lead, words, chunks: chunkWords(words) }); TOTAL += dur;
   });
   const get = id => SC.find(s => s.id === id);
   const add = (sc, arr) => arr.forEach(v => STRIKES.push(sc.start + v));
@@ -707,7 +776,71 @@ function setup(timings) {
   add(dv, [dv.S(0) + 1.4, dv.S(1) + .5, dv.S(1) + 2.8, dv.S(2) + 1.5, dv.S(3) + 1.0, dv.S(3) + 3.4, dv.S(8) + .6, dv.S(8) + 3.2]);
   add(ou, [ou.S(3) + 1.0, ou.S(4) + .6, ou.S(5) + 2.0, ou.S(6) + .8]);
   STRIKES.sort((a, b) => a - b);
+  PUNCH = []; let lastP = -9;
+  SC.forEach(s => s.words.forEach(o => { const tt = s.start + o.t; if ((o.k === 'red' || o.k === 'num0') && tt - lastP > 1.1) { PUNCH.push(tt); lastP = tt; } }));
   return { total: TOTAL, fps: 24, scenes: SC.map(s => ({ id: s.id, start: s.start, dur: s.dur, lead: s.lead, speech: s.speech, sentence_starts: s.st })), strikes: STRIKES };
+}
+
+/* ============================== KINETIC TYPOGRAPHY ============================== */
+let PUNCH = [];
+const NUMW = /^(one|two|three|four|five|six|seven|eight|nine|ten|twelve|seventeen|eighteen|twenty|thirty|forty|fifty|sixty|hundred|thousand|first|third|twenty-three|thirty-five|thirty-two|fifty-five-year-old|forty-seven|sixty|N722BD|60)$/i;
+const RED_W = /^(thunderstorm|falling|killed|stalls|stall|overspeed|rapid|descent|broke|apart|coffin|corner|mach|tuck|shock|vanish|negotiate|turbulence|limits|straight|down|crash|dive|wall)$/i;
+const ICE_W = /^(ice|clear|supercooled|freeze|freezing|droplets|liquid|zero|colder|frozen)$/i;
+const KEY_W = /^(physics|lift|density|velocity|squared|coefficient|shape|wing|altitude|speed|sound|updrafts|ntsb|young|legal|age)$/i;
+function emph(w) {
+  const c = w.replace(/[^A-Za-z0-9\-']/g, '');
+  if (NUMW.test(c)) return 'num'; if (RED_W.test(c)) return 'red'; if (ICE_W.test(c)) return 'ice'; if (KEY_W.test(c)) return 'key'; return '';
+}
+function chunkWords(words) {
+  const out = []; let cur = [];
+  words.forEach((o, i) => {
+    cur.push(o); const len = cur.reduce((a, b) => a + b.w.length + 1, 0);
+    const nxt = words[i + 1];
+    const brk = /[.!?;:]$/.test(o.w) || (/,$/.test(o.w) && cur.length >= 2) || cur.length >= 5 || len > 28 || (nxt && nxt.t - o.t > .7);
+    if (brk || !nxt) { out.push(cur); cur = []; }
+  });
+  // first number word of a run gets 'num0' (punch)
+  words.forEach((o, i) => { if (o.k === 'num' && !(words[i - 1] && words[i - 1].k === 'num')) o.k = 'num0'; });
+  return out.map((c, i) => ({ words: c, t0: c[0].t, t1: Math.min(out[i + 1] ? out[i + 1][0].t : 1e9, c[c.length - 1].e + .9) }));
+}
+const ebk = x => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };   // ease-out-back
+const KCOL = { num: AMBER, num0: AMBER, red: RED, ice: ICE, key: GREEN, '': '#fff' };
+function captions(sc, lt, k = 1) {
+  if (k <= 0) return;
+  const ch = sc.chunks.find(c => lt >= c.t0 - .05 && lt < c.t1); if (!ch) return;
+  const out = 1 - ss(ch.t1 - .14, ch.t1, lt);
+  const S0 = 50, y = 902; g.save();
+  const items = ch.words.map(o => { const big = o.k ? 1.12 : 1; const sz = S0 * big; g.font = `${o.k ? 800 : 600} ${sz}px Inter`; g.letterSpacing = '0px'; return { o, sz, w: g.measureText(o.w).width }; });
+  const gap = 15, tot = items.reduce((a, b) => a + b.w, 0) + gap * (items.length - 1);
+  let x = W / 2 - tot / 2;
+  for (const it of items) {
+    const d = lt - it.o.t; const p = clamp(d / .2); if (d < -.02) { x += it.w + gap; continue; }
+    const sc2 = lerp(.55, 1, ebk(p)), a = clamp(d / .07) * out * k;
+    const active = lt >= it.o.t && lt < it.o.e + .1;
+    g.save(); g.translate(x + it.w / 2, y - (1 - eout(p)) * 22 - (1 - out) * 10); g.scale(sc2, sc2);
+    g.globalAlpha = a; g.font = `${it.o.k ? 800 : 600} ${it.sz}px Inter`; g.textAlign = 'center';
+    g.shadowColor = 'rgba(0,0,0,.75)'; g.shadowBlur = 18; g.shadowOffsetY = 3;
+    g.fillStyle = it.o.k ? KCOL[it.o.k] : (active ? '#fff' : 'rgba(255,255,255,.86)');
+    g.fillText(it.o.w, 0, 0);
+    if (it.o.k && active) { g.shadowColor = KCOL[it.o.k]; g.shadowBlur = 26; g.shadowOffsetY = 0; g.globalAlpha = a * .55; g.fillText(it.o.w, 0, 0); }
+    g.restore(); x += it.w + gap;
+  }
+  g.restore();
+}
+// staggered per-letter reveal
+function KT(str, x, y, o, t0, lt) {
+  const a = clamp(o.a ?? 1); if (a <= .002 || lt < t0) return;
+  g.save(); g.font = `${o.w || 400} ${o.s || 40}px Inter`; g.letterSpacing = (o.ls || 0) + 'px';
+  const tw = g.measureText(str).width; let x0 = o.al === 'center' ? x - tw / 2 : (o.al === 'right' ? x - tw : x);
+  const stg = o.stg ?? .035;
+  for (let i = 0; i < str.length; i++) {
+    const p = clamp((lt - t0 - i * stg) / .45); if (p <= 0) break;
+    const px = x0 + g.measureText(str.slice(0, i)).width;
+    g.save(); g.globalAlpha = a * clamp(p * 2); g.fillStyle = o.c || '#fff';
+    g.shadowColor = o.glow ? (o.glowC || o.c) : 'rgba(0,6,18,.7)'; g.shadowBlur = o.glow || 24;
+    g.translate(px, y + (1 - eout(p)) * (o.dy ?? 40)); g.textAlign = 'left'; g.fillText(str[i], 0, 0); g.restore();
+  }
+  g.restore();
 }
 function flashAt(t) {
   let f = 0, idx = 0; STRIKES.forEach((s, i) => { const d = t - s; if (d >= 0 && d < 1.3) { const v = Math.exp(-d * 5.5) * (.55 + .45 * Math.abs(Math.sin(d * 55))) + (d > .13 && d < .21 ? .7 : 0); if (v > f) { f = v; idx = i; } } });
@@ -716,11 +849,13 @@ function flashAt(t) {
 
 /* ============================== CHAPTER CARD ============================== */
 function chapterCard(sc, lt) {
-  if (!sc.chapter) return; const a = win(lt, .25, 2.9, .7, .7); if (a <= 0) return;
-  g.fillStyle = `rgba(0,0,0,${.45 * a})`; g.fillRect(0, 0, W, H);
-  T(sc.numeral, W / 2, 470, { s: 30, w: 300, ls: 10, al: 'center', c: AMBER, a });
-  L([[W / 2 - 40 * a, 500], [W / 2 + 40 * a, 500]], { c: AMBER, lw: 1.5, a });
-  T(sc.chapter.toUpperCase(), W / 2, 590, { s: 76, w: 200, ls: lerp(14, 24, seg(lt, 0, 3)), al: 'center', a });
+  if (!sc.chapter) return; const a = win(lt, .05, sc.lead + .1, .3, .35); if (a <= 0) return;
+  g.fillStyle = `rgba(0,0,0,${.4 * a})`; g.fillRect(0, 0, W, H);
+  const z = 1 + seg(lt, 0, sc.lead) * .06; g.save(); g.translate(W / 2, 540); g.scale(z, z); g.translate(-W / 2, -540);
+  KT(sc.numeral, W / 2, 470, { s: 30, w: 300, ls: 10, al: 'center', c: AMBER, a, dy: 20 }, .05, lt);
+  L([[W / 2 - 60 * eout(seg(lt, .1, .6)), 500], [W / 2 + 60 * eout(seg(lt, .1, .6)), 500]], { c: AMBER, lw: 2, a });
+  KT(sc.chapter.toUpperCase(), W / 2, 590, { s: 80, w: 300, ls: 18, al: 'center', a, stg: .03 }, .15, lt);
+  g.restore();
 }
 
 /* ============================== SCENES ============================== */
@@ -728,72 +863,142 @@ const SCENES = {
   /* ---------- COLD OPEN ---------- */
   hook(lt, sc, t) {
     const s = sc.S, fl = flashAt(t);
-    const dv = eio(seg(lt, s(2) + .7, s(2) + 3.4));
-    const A0 = { pos: [-6.2, 1.2, 9.6], look: [-1.8, -.15, 6.6], fov: 32 }, A1 = { pos: [-5.2, 2.1, 4.4], look: [4, .4, -.4], fov: 38 };
-    let o = { speed: 150, turb: .55, flash: fl };
-    if (lt < s(1) - .05) o.cam = lerpShot(A0, A1, eio(seg(lt, 0, s(1) + .2)));
-    else if (lt < s(2) - .05) { const u = seg(lt, s(1), s(2)); o.cam = { dist: lerp(95, 78, u), az: 1.62 + u * .08, el: .03, fov: 24, lookOff: [0, 4, 0], roll: -.03 }; o.turb = .4; }
-    else if (lt < s(4) - .05) {
+    const c1 = s(1) - .05, c2 = s(1) + 1.9, c3 = s(2) - .05, c4 = s(4) - .05;
+    let cuts = [c1, c2, c3, c4], ret = {};
+    if (lt < c1) {
+      // 1. bright midday sky: jet blasts past the lens at FL350
+      const u = seg(lt, 0, c1);
+      const res = sky.update(t, { mode: 'day', speed: 260, cam: { dist: lerp(15, 24, eout(u)), az: lerp(-.25, 1.05, eio(u)), el: lerp(-.06, .08, u), fov: 34, lookOff: [lerp(-2, 3, u), .5, 0] } });
+      flare(res.sunWorld, sky.cam, .8); post(t);
+      const a0 = win(lt, s(0) - .1, c1 + .2, .2, .2);
+      KT('35,000', 150, 700, { s: 190, w: 200, ls: -2, a: a0, dy: 60, stg: .05 }, s(0) - .1, lt);
+      KT('FEET  ·  FL350', 156, 760, { s: 26, w: 600, ls: 9, c: AMBER, a: a0, dy: 20 }, s(0) + .25, lt);
+      ret.capOff = true;
+    } else if (lt < c2) {
+      // 2. the towering cumulonimbus ahead, jet heading straight into it
+      const u = seg(lt, c1, c2);
+      cb.update(t, lt, { grow: lerp(.92, 1, u), flash: fl, cloudK: 1, parts: 0, far: 400, jetX: lerp(-22, -8, u), cam: { pos: [lerp(-46, -40, u), lerp(9, 10.5, u), lerp(26, 20, u)], look: [lerp(-14, -6, u), 9.5, 0], fov: lerp(34, 28, eio(u)) } });
+      post(t);
+      callout(V3(lerp(-22, -8, u), 10.7, 0), cb.cam, -150, -110, 'N722BD', 'Learjet 60  ·  12:47 p.m.', win(lt, c1 + .2, c2 + .2, .3, .2));
+      T('SOUTHERN FLORIDA  ·  NOVEMBER 1, 2026', W - 150, 250, { s: 22, w: 600, ls: 6, al: 'right', c: '#fff', a: win(lt, c1 + .1, c2 + .2, .3, .2) });
+      ret.flash = 0;
+    } else if (lt < c3) {
+      // 3. inside: chase cam, turbulence and rain
+      const u = seg(lt, c2, c3);
+      storm.update(t, { speed: 170, turb: .9, flash: fl, cam: lerpShot({ pos: [-9, 1.6, 8.5], look: [2, .2, 0], fov: 36 }, { pos: [-5.5, 2.4, 4.6], look: [5, .4, -.4], fov: 40 }, eio(u)) });
+      post(t); if (fl.f) { g.fillStyle = `rgba(240,245,255,${fl.f * .15})`; g.fillRect(0, 0, W, H); }
+      ret.flash = fl.f;
+    } else if (lt < c4) {
+      // 4. the dive
+      const dv = eio(seg(lt, c3 + .3, c3 + 2.6));
       const fa = eio(seg(lt, s(3) - .3, s(4)));
-      o = { ...o, pitch: -.9 * dv, roll: .62 * dv, speed: 150 + 190 * dv, turb: .8 + .7 * dv,
-        jetOff: [0, -fa * 55, 0], cam: { dist: lerp(28, 22, dv) + fa * 25, az: lerp(2.55, 3.35, seg(lt, s(2), s(4))), el: lerp(.1, .45, dv), fov: 42, target: [0, -fa * 12, 0], roll: lerp(0, .12, dv) } };
-    } else { o = { ...o, hideJet: true, speed: 60, turb: .2, dark: .7, cam: { dist: 70, az: 3.0 + (lt - s(4)) * .02, el: -.22, fov: 38, target: [0, 0, 0] } }; }
-    storm.update(t, o);
-    post(t, { right: win(lt, s(2), s(4) + .3) });
-    if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .12})`; g.fillRect(0, 0, W, H); }
-    // 35,000
-    const a0 = win(lt, s(0) + .1, s(1) + .2, .8, .5);
-    bigNum('35,000', 'FEET', 150, 820, a0, { s: 150 });
-    T('SOUTHERN FLORIDA  ·  NOVEMBER 1, 2026', W - 150, 830, { s: 22, w: 500, ls: 6, al: 'right', c: 'rgba(255,255,255,.8)', a: win(lt, s(1) + .3, s(2) - .1) });
-    // altitude readout (diegetic, right edge)
-    const ha = win(lt, s(2) + .1, s(4) + .3, .5, .5);
-    const prog = ein(seg(lt, s(2) + .7, sc.E(3) - .2)); const alt = lerp(35000, 8750, prog);
-    const vs = -32000 * ss(s(2) + .7, s(2) + 3.2, lt);
-    const X = W - 150;
-    T('ALTITUDE', X, 330, { s: 18, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.7)', a: ha });
-    T(fmt(alt), X, 450, { s: 128, w: 200, ls: -2, al: 'right', a: ha });
-    T('FT', X, 490, { s: 20, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.7)', a: ha });
-    T('VERTICAL SPEED', X, 580, { s: 18, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.7)', a: ha });
-    T((vs < -1 ? '−' : '') + fmt(Math.abs(vs)), X, 660, { s: 76, w: 300, al: 'right', c: vs < -8000 ? RED : '#fff', a: ha, glow: vs < -8000 ? 18 : 0, glowC: RED });
-    T('FT / MIN', X, 698, { s: 18, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.7)', a: ha });
-    // scrolling tape
-    const tx = X + 50; L([[tx, 230], [tx, 850]], { c: 'rgba(255,255,255,.35)', lw: 1, a: ha });
-    for (let v = 0; v <= 40000; v += 1000) { const y = 540 + (alt - v) * .05; if (y < 230 || y > 850) continue; L([[tx, y], [tx + (v % 5000 ? 10 : 22), y]], { c: '#fff', lw: 1.2, a: ha * .7 }); }
-    L([[tx - 14, 540], [tx + 30, 540]], { c: prog > .02 ? RED : AMBER, lw: 2.5, a: ha, glow: 10 });
-    T(`T + ${Math.round(lerp(0, 63, prog))} s`, X, 790, { s: 26, w: 400, ls: 3, al: 'right', c: AMBER, a: ha * ss(s(2) + .7, s(2) + 1.2, lt) });
-    // title
-    const ta = win(lt, s(4) + .2, sc.dur + 2, 1.4, .1);
-    T('SIXTY SECONDS', W / 2, 560, { s: 150, w: 200, ls: lerp(10, 28, seg(lt, s(4), sc.dur)), al: 'center', a: ta, sb: 40 });
-    T('THE PHYSICS OF THE FLORIDA LEARJET CRASH', W / 2, 640, { s: 26, w: 500, ls: 9, al: 'center', c: AMBER, a: ta * ss(s(4) + 1, s(4) + 2, lt) });
-    T('Illustrative reconstruction  ·  NTSB investigation ongoing', W / 2, 900, { s: 19, w: 300, ls: 2, al: 'center', c: 'rgba(255,255,255,.6)', a: ta * ss(s(4) + 1.5, s(4) + 2.5, lt) });
-    const cut = [s(1), s(2), s(4)]; return { cuts: cut, fadeIn: 1.2 };
+      const mid = s(3) - .05; cuts.push(mid);
+      let cam = lt < mid ? { dist: lerp(26, 20, dv), az: lerp(2.4, 3.3, seg(lt, c3, mid)), el: lerp(.1, .5, dv), fov: 44, target: [0, 0, 0], roll: lerp(0, .14, dv) }
+        : { pos: [-16, 6, 6], look: [8, -3, 0], fov: 50, roll: .1 };
+      storm.update(t, { pitch: -.9 * dv, roll: .62 * dv, speed: 170 + 230 * dv, turb: .8 + .7 * dv, flash: fl, rainK: 1 + dv, jetOff: lt < mid ? [0, -fa * 30, 0] : [0, 0, 0], cam });
+      post(t, { right: 1 }); if (fl.f) { g.fillStyle = `rgba(240,245,255,${fl.f * .15})`; g.fillRect(0, 0, W, H); }
+      const ha = win(lt, c3 + .1, c4 + .3, .3, .3);
+      const prog = ein(seg(lt, c3 + .5, sc.E(3) - .2)); const alt = lerp(35000, 8750, prog);
+      const vs = -32000 * ss(c3 + .5, c3 + 2.6, lt);
+      const X = W - 150;
+      T('ALTITUDE', X, 300, { s: 18, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.8)', a: ha });
+      T(fmt(alt), X, 420, { s: 128, w: 200, ls: -2, al: 'right', a: ha });
+      T('FT', X, 460, { s: 20, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.8)', a: ha });
+      T('VERTICAL SPEED', X, 550, { s: 18, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.8)', a: ha });
+      T((vs < -1 ? '−' : '') + fmt(Math.abs(vs)), X, 630, { s: 76, w: 300, al: 'right', c: vs < -8000 ? RED : '#fff', a: ha, glow: vs < -8000 ? 18 : 0, glowC: RED });
+      T('FT / MIN', X, 668, { s: 18, w: 600, ls: 6, al: 'right', c: 'rgba(255,255,255,.8)', a: ha });
+      const tx = X + 50; L([[tx, 220], [tx, 800]], { c: 'rgba(255,255,255,.4)', lw: 1, a: ha });
+      for (let v = 0; v <= 40000; v += 1000) { const y = 510 + (alt - v) * .05; if (y < 220 || y > 800) continue; L([[tx, y], [tx + (v % 5000 ? 10 : 22), y]], { c: '#fff', lw: 1.2, a: ha * .7 }); }
+      L([[tx - 14, 510], [tx + 30, 510]], { c: prog > .02 ? RED : AMBER, lw: 2.5, a: ha, glow: 10 });
+      T(`T + ${Math.round(lerp(0, 63, prog))} s`, X, 750, { s: 26, w: 400, ls: 3, al: 'right', c: AMBER, a: ha * ss(c3 + .5, c3 + 1, lt) });
+      ret.flash = fl.f;
+    } else {
+      // 5. title over the sunlit cloud tops
+      const u = seg(lt, c4, sc.dur);
+      const res = sky.update(t, { mode: 'day', speed: 120, hideJet: true, cam: { dist: 60, az: 1.6 + u * .25, el: lerp(-.02, .1, eio(u)), fov: 30, lookOff: [0, lerp(-30, 6, eio(u)), 0] } });
+      flare(res.sunWorld, sky.cam, .9); post(t);
+      g.fillStyle = 'rgba(0,10,25,.25)'; g.fillRect(0, 0, W, H);
+      const ta = win(lt, c4, sc.dur + 2, .2, .1);
+      const z = 1 + u * .05; g.save(); g.translate(W / 2, 540); g.scale(z, z); g.translate(-W / 2, -540);
+      KT('SIXTY SECONDS', W / 2, 560, { s: 150, w: 300, ls: 18, al: 'center', a: ta, stg: .045, dy: 70 }, c4 + .1, lt);
+      KT('THE PHYSICS OF THE FLORIDA LEARJET CRASH', W / 2, 640, { s: 26, w: 600, ls: 9, al: 'center', c: AMBER, a: ta, stg: .012, dy: 16 }, c4 + .8, lt);
+      g.restore();
+      T('Illustrative reconstruction  ·  NTSB investigation ongoing', W / 2, 700, { s: 19, w: 400, ls: 2, al: 'center', c: 'rgba(255,255,255,.75)', a: ta * ss(c4 + 1.4, c4 + 2.2, lt) });
+      ret.capOff = true;
+    }
+    return { ...ret, cuts, fadeIn: .5 };
   },
 
-  /* ---------- I. FLIGHT N722BD (night map) ---------- */
+  /* ---------- I. FLIGHT N722BD (map → street level) ---------- */
   facts(lt, sc, t) {
-    const s = sc.S, ll = map.ll;
-    const pr = lerp(0, .93, eio(seg(lt, .6, sc.E(0) + .4))) + .07 * eio(seg(lt, s(1) + .8, s(1) + 2.6));
-    const head = map.curve.getPointAt(clamp(pr));
-    const GA = ll(-80.13, 26.62, .07);
-    const follow = { pos: head.clone().add(V3(-3.2, 2.5, 2.6)), look: head.clone().add(V3(2.6, -.25, -.4)) };
-    const p1 = eio(seg(lt, s(1) - .2, s(1) + 3.5));
-    const push = eio(seg(lt, s(2), sc.dur));
-    const orbit = (lt - s(1)) * .04;
-    const craneP = GA.clone().add(V3(-1.7 * Math.cos(orbit) + .3, lerp(2.4, 1.3, push), 1.8 * Math.cos(orbit * .7) + .2)), craneL = GA.clone().add(V3(.15, 0, 0));
-    const camPos = follow.pos.clone().lerp(craneP, p1), camTarget = follow.look.clone().lerp(craneL, p1);
-    map.update(t, { prog: pr, plan: ss(s(0) + 4, s(0) + 6, lt) * .6 * (1 - p1 * .5), crash: ss(s(1) + 2.2, s(1) + 3.2, lt), camPos, camTarget, fov: lerp(34, 30, p1) });
-    post(t);
-    const lab = (n, lo, la, a, c, dx = 18, dy = -18, sz = 20) => { const [x, y, z] = proj(ll(lo, la, .1), map.cam); if (z > 1 || a <= 0) return; T(n, x + dx, y + dy, { s: sz, w: 600, ls: 5, c, a }); };
-    lab('AUSTIN', -97.74, 30.27, win(lt, .4, s(0) + 4), 'rgba(255,255,255,.85)');
-    lab('GULF OF MEXICO', -90.5, 26.2, win(lt, 1, s(1) + 1) * .7, 'rgba(255,255,255,.85)', 0, 0, 22);
-    lab('FLORIDA', -81.4, 28.2, win(lt, s(0) + 3, sc.dur + 1) * .6, 'rgba(255,255,255,.6)');
-    lab('BAHAMAS', -77.4, 25.9, win(lt, s(0) + 4, s(2)) * .6, 'rgba(255,255,255,.55)');
-    lab('GREENACRES', -80.13, 26.62, win(lt, s(1) + 2.2, sc.dur + 1), RED, 26, 10, 24);
-    lowerThird('LEARJET 60  ·  N722BD', 'Austin, Texas  →  North Eleuthera, Bahamas', win(lt, Math.max(3, s(0) + .5), s(1) - .1));
-    lowerThird('GREENACRES, PALM BEACH COUNTY', 'November 1, 2026  ·  12:49 p.m.', win(lt, s(1) + .4, s(2) - .1));
-    lowerThird('NINE ON BOARD', 'No survivors', win(lt, s(2) + .3, s(3) - .1));
-    lowerThird('NATHALIA GADELHA FILGUEIRAS', 'Co-pilot  ·  20 years old', win(lt, s(3) + .3, sc.dur + 1, .8, .1));
-    return { cuts: [] };
+    const s = sc.S, ll = map.ll, SITE = map.SITE;
+    const m1 = s(0) + 3.4, c1 = s(1) - .05, c2 = s(2) - .05, c3 = s(3) - .05;
+    const cuts = [m1, c1, c2, c3];
+    const lab = (n, p, a, c = 'rgba(255,255,255,.92)', dx = 14, dy = -14, sz = 20, al = 'left') => { const [x, y, z] = proj(p, map.cam); if (z > 1 || a <= 0) return; T(n, x + dx, y + dy, { s: sz, w: 700, ls: 4, c, a, al }); };
+    if (lt < c1) {
+      const pr = lerp(0, 1, eio(seg(lt, sc.lead - .4, c1 + .2)));
+      const head = map.curve.getPointAt(clamp(pr));
+      let camPos, camTarget;
+      if (lt < m1) { const u = seg(lt, 0, m1); camPos = head.clone().add(V3(lerp(-2.6, -1.6, u), lerp(1.6, 1.1, u), 2.2)); camTarget = head.clone().add(V3(2.4, -.2, -.3)); }
+      else { const u = seg(lt, m1, c1); camPos = ll(-89 + u * 2, 21.5 + u, lerp(7.5, 6.2, eio(u))); camTarget = ll(-88 + u * 2.5, 27.6, 0); }
+      map.update(t, { prog: pr, plan: ss(m1, m1 + 1, lt) * .7, crash: 0, camPos, camTarget, fov: lt < m1 ? 38 : 34 });
+      post(t);
+      lab('AUSTIN', ll(-97.74, 30.27, .1), win(lt, .2, m1 + 1), '#fff', 16, -16, 22);
+      lab('GULF OF MEXICO', ll(-90.5, 26.2, .1), win(lt, m1, c1 + 1) * .85, 'rgba(255,255,255,.85)', 0, 0, 24, 'center');
+      lab('FLORIDA', ll(-81.4, 28.2, .1), win(lt, m1, c1 + 1) * .8);
+      lab('BAHAMAS', ll(-77.4, 25.9, .1), win(lt, m1 + .5, c1 + 1) * .8);
+      lowerThird('LEARJET 60  ·  N722BD', 'Austin, Texas  →  North Eleuthera, Bahamas', win(lt, Math.max(1.2, s(0) + .3), c1 + .2, .5, .2));
+      return { cuts };
+    }
+    if (lt < c2) {
+      // dive from regional view to street level
+      const p1 = eio(seg(lt, c1, c1 + 3.4)), p3 = eio(seg(lt, c1 + 5.6, c2 + .3)), uu = seg(lt, c1, c2);
+      const hh = Math.exp(lerp(lerp(Math.log(4), Math.log(.15), p1), Math.log(.016), p3)) * (1 - .12 * seg(lt, c1 + 3.4, c1 + 5.6) * (1 - p3));
+      const az = lerp(.9, -.25, eio(uu));
+      const mid = SITE.clone().lerp(ll(-80.0362, 26.634, .0607), .45);
+      const tgt = SITE.clone().lerp(mid, p1 * (1 - p3));
+      const camPos = tgt.clone().add(V3(Math.sin(az) * hh * .7, hh, Math.cos(az) * hh * .7)), camTarget = tgt;
+      const loc = 1 - ss(.16, .5, hh);
+      map.update(t, { prog: 1, plan: 0, crash: ss(c1 + 2.4, c1 + 3.2, lt), ringS: hh * .55, local: loc, route: hh > 1.5, camPos, camTarget, fov: 36 });
+      post(t);
+      const la = loc * ss(c1 + 3, c1 + 3.8, lt);
+      lab('MILITARY TRAIL', ll(-80.1157, 26.6445, .061), la, '#fff', 10, 0, 22);
+      lab('10TH AVE N', ll(-80.104, 26.6365, .061), la, '#fff', 0, -10, 22);
+      lab('I-95', ll(-80.0745, 26.648, .061), la, AMBER, 10, 0, 22);
+      lab('LAKE WORTH LAGOON', ll(-80.048, 26.655, .061), la * .9, 'rgba(220,240,255,.95)', 0, 0, 16, 'center');
+      lab('ATLANTIC OCEAN', ll(-80.02, 26.62, .061), la * .9, 'rgba(220,240,255,.95)', 0, 0, 18, 'center');
+      lab('PBI AIRPORT', ll(-80.096, 26.689, .061), la * .9, '#fff', 0, -12, 16, 'center');
+      // distance to the coast
+      const da = la * win(lt, c1 + 3.6, c1 + 6.1, .4, .4);
+      if (da > 0) { const [x1, y1] = proj(SITE, map.cam), [x2, y2] = proj(ll(-80.0362, 26.634, .061), map.cam); const k = eout(seg(lt, c1 + 3.6, c1 + 4.6));
+        L([[x1, y1], [lerp(x1, x2, k), lerp(y1, y2, k)]], { c: CYAN, lw: 2.5, dash: [10, 8], a: da, glow: 8 }); dot(x2, y2, 5, CYAN, da * k);
+        T('≈ 7 km  ·  4.5 mi FROM THE BEACH', (x1 + x2) / 2, Math.max(y1, y2) + 44, { s: 24, w: 700, ls: 3, al: 'center', c: CYAN, a: da * k }); }
+      const [sx, sy] = proj(SITE, map.cam); dot(sx, sy, 7, RED, ss(c1 + 2.4, c1 + 2.8, lt), 20);
+      lowerThird('GREENACRES, PALM BEACH COUNTY', 'Military Trail near 10th Avenue North  ·  12:49 p.m.', win(lt, c1 + 3.2, c2 + .2, .5, .2));
+      return { cuts };
+    }
+    if (lt < c3) {
+      // low orbit over the crash site
+      const u = seg(lt, c2, c3), az = lerp(2.2, 3.1, u), hh = lerp(.0032, .0024, u);
+      const camPos = SITE.clone().add(V3(Math.cos(az) * .005, hh, Math.sin(az) * .005)), camTarget = SITE.clone().add(V3(0, -.0002, 0));
+      map.update(t, { prog: 1, plan: 0, crash: 1, ringS: .0035, local: 1, camPos, camTarget, fov: 34 });
+      post(t);
+      callout(SITE, map.cam, 170, -150, 'CRATER IN THE ROADWAY', 'debris scattered nearby', win(lt, c2 + .3, c3 + .2, .4, .2), RED);
+      lab('MILITARY TRAIL', ll(-80.1157, 26.6375, .061), win(lt, c2 + .5, c3 + .2) * .9, '#fff', 0, 0, 18, 'center');
+      lowerThird('NINE ON BOARD', 'No survivors  ·  ~600 residents displaced', win(lt, c2 + .2, c3 + .2, .5, .2));
+      return { cuts };
+    }
+    // the right seat
+    const u = seg(lt, c3, sc.dur);
+    const res = sky.update(t, { mode: 'day', speed: 110, cam: { dist: lerp(20, 13, eio(u)), az: lerp(1.25, 1.5, u), el: .05, fov: 30, lookOff: [lerp(1, 4.5, eio(u)), .6, 0] } });
+    flare(res.sunWorld, sky.cam, .7); post(t);
+    sky.jet.group.updateMatrixWorld(true);
+    callout(sky.jet.group.localToWorld(V3(5.05, .55, .5)), sky.cam, 160, -170, 'RIGHT SEAT', 'Co-pilot  ·  second in command', win(lt, c3 + .4, sc.dur + 1, .4, .1), AMBER);
+    lowerThird('NATHALIA GADELHA FILGUEIRAS', 'Co-pilot  ·  20 years old', win(lt, c3 + .3, sc.dur + 1, .5, .1));
+    const na = win(lt, s(4) - .05, sc.dur + 1, .2, .1);
+    KT('20', W - 330, 700, { s: 260, w: 200, ls: -4, c: AMBER, a: na, dy: 80, glow: 30, glowC: AMBER }, s(4) - .05, lt);
+    T('YEARS OLD', W - 330 + 10, 760, { s: 26, w: 700, ls: 8, a: na * ss(s(4) + .3, s(4) + .7, lt) });
+    return { cuts };
   },
 
   /* ---------- II. THE RIGHT SEAT (golden hour) ---------- */
@@ -801,7 +1006,11 @@ const SCENES = {
     const s = sc.S;
     let cam;
     if (lt < s(2) - .05) cam = { dist: 34 - lt * .3, az: .62 + lt * .012, el: -.07, fov: 30, lookOff: [0, 1.5, 0] };
-    else if (lt < s(6) - .05) { const u = seg(lt, s(2), s(6)); cam = { dist: 48, az: lerp(2.55, 2.2, u), el: .1, fov: 30, lookOff: [0, 2, 0] }; }
+    else if (lt < s(6) - .05) {
+      const k = lt < s(3) ? 0 : lt < s(4) ? 1 : lt < s(5) ? 2 : 3, A0 = [s(2), s(3), s(4), s(5)][k], A1 = [s(3), s(4), s(5), s(6)][k], u = seg(lt, A0, A1);
+      cam = [{ dist: lerp(50, 44, u), az: lerp(2.55, 2.35, u), el: .1, fov: 30, lookOff: [0, 2, 0] }, { dist: lerp(24, 20, u), az: lerp(.25, .45, u), el: .12, fov: 34, lookOff: [2, 1, 0] },
+        { dist: lerp(62, 52, u), az: lerp(3.6, 3.35, u), el: -.04, fov: 28, lookOff: [0, 3, 0] }, { dist: lerp(36, 30, u), az: lerp(1.25, 1.5, u), el: .22, fov: 32, lookOff: [0, 1, 0] }][k];
+    }
     else if (lt < s(7) - .05) { const u = seg(lt, s(6), s(7)); cam = { dist: lerp(30, 26, u), az: lerp(.95, 1.05, u), el: .05, fov: 30, lookOff: [0, 2, 0] }; }
     else { const u = seg(lt, s(7), sc.dur); cam = { dist: lerp(80, 120, u), az: 1.7 + u * .1, el: .12, fov: 28, lookOff: [0, 5, 0] }; }
     const N = (id, num, lab, a, x = -30, y = 4, col) => ({ id, a, x, y, depth: 50, make: () => numberPlane(num, lab, col) });
@@ -817,19 +1026,19 @@ const SCENES = {
     const res = sky.update(t, { mode: 'day', speed: 85, cam, texts });
     flare(res.sunWorld, sky.cam, .9);
     post(t);
-    T('FAA MINIMUM AGES', 150, 830, { s: 22, w: 600, ls: 7, c: AMBER, a: win(lt, s(1) + .2, s(6)) });
-    T('Second in command requires a type rating for the specific aircraft', 150, 872, { s: 22, w: 300, c: 'rgba(255,255,255,.8)', a: win(lt, s(4) + .3, s(5)) });
+    T('FAA MINIMUM AGES', 150, 250, { s: 22, w: 600, ls: 7, c: AMBER, a: win(lt, s(1) + .2, s(6)) });
+    T('Second in command requires a type rating for the specific aircraft', 150, 292, { s: 22, w: 300, c: 'rgba(255,255,255,.8)', a: win(lt, s(4) + .3, s(5)) });
     const qa = win(lt, s(7) + .1, sc.dur + 1, .9, .1);
     g.fillStyle = `rgba(0,0,0,${.35 * qa})`; g.fillRect(0, 0, W, H);
-    T('Age alone does not explain an accident.', W / 2, 530, { s: 58, w: 200, ls: 1, al: 'center', a: qa });
-    T('PHYSICS MIGHT.', W / 2, 620, { s: 30, w: 500, ls: 14, al: 'center', c: AMBER, a: qa * ss(s(8), s(8) + .7, lt) });
-    return { cuts: [s(2), s(6), s(7)] };
+    KT('Age alone does not explain an accident.', W / 2, 530, { s: 62, w: 300, ls: 1, al: 'center', a: qa, stg: .018 }, s(7), lt);
+    KT('PHYSICS MIGHT.', W / 2, 640, { s: 64, w: 800, ls: 16, al: 'center', c: AMBER, a: qa, stg: .05, glow: 26, glowC: AMBER }, s(8) - .05, lt);
+    return { cuts: [s(2), s(3), s(4), s(5), s(6), s(7)], capOff: lt > s(7) - .05 };
   },
 
   /* ---------- III. INTO THE STORM ---------- */
   storm(lt, sc, t) {
     const s = sc.S, fl = flashAt(t);
-    const sw1 = s(1) - .05, sw2 = s(5) - .05; let cuts = [sw1, sw2];
+    const sw1 = s(1) - .05, sw2 = s(5) - .05; let cuts = [sw1, s(2) - .05, s(3) - .05, s(4) - .05, sw2];
     if (lt < sw1) {
       const u = seg(lt, 0, sw1);
       storm.update(t, { pitch: .02, speed: 150, turb: 1.3, flash: fl, cam: lerpShot({ pos: [12, 1.4, 5.5], look: [3, .2, 0], fov: 34 }, { pos: [9, .4, 6.8], look: [-1, .5, 0], fov: 38 }, eio(u)) });
@@ -842,7 +1051,9 @@ const SCENES = {
       const xr = ss(s(2) - .3, s(2) + 1.2, lt);
       const grow = .5 + .5 * eout(seg(lt, sw1, sw1 + 5));
       const camA = { pos: [-38, 2.2, 40], look: [0, 8.5, 0], fov: 34 }, camB = { pos: [-30, 9, 34], look: [0, 7, 0], fov: 36 };
-      const c = lerpShot(camA, camB, eio(seg(lt, sw1, sw2)));
+      const k = lt < s(2) - .05 ? 0 : lt < s(3) - .05 ? 1 : lt < s(4) - .05 ? 2 : 3, A0 = [sw1, s(2), s(3), s(4)][k], A1 = [s(2), s(3), s(4), sw2][k], u = eio(seg(lt, A0, A1));
+      const c = [lerpShot(camA, camB, u), lerpShot({ pos: [-16, 4, 18], look: [0, 7, 0], fov: 42 }, { pos: [-12, 6, 14], look: [0, 8, 0], fov: 44 }, u),
+        lerpShot({ pos: [34, 7, 34], look: [0, 6.5, 0], fov: 36 }, { pos: [28, 8, 38], look: [0, 6.5, 0], fov: 34 }, u), lerpShot({ pos: [-9, 1.2, 9], look: [0, 9, 0], fov: 52 }, { pos: [-7, 1.6, 8], look: [0, 10, 0], fov: 48 }, u)][k];
       cb.update(t, lt, { grow, flash: fl, cloudK: 1 - .7 * xr, parts: xr, phase: lt > s(3), planes: ss(s(3), s(3) + 1, lt), flLine: ss(sw1 + 1, sw1 + 2.5, lt), jetX: lerp(-30, -3, seg(lt, sw1 + .5, sw2)), cam: c });
       post(t);
       callout(V3(lerp(-30, -3, seg(lt, sw1 + .5, sw2)), 10.7, 0), cb.cam, -120, -90, 'N722BD', 'FL350  ·  10.7 km', win(lt, sw1 + 1.5, s(2) + .5));
@@ -850,7 +1061,7 @@ const SCENES = {
       callout(V3(9, 4.6, 12), cb.cam, 160, 60, '0 °C  FREEZING LEVEL', '≈ 15,000 ft', win(lt, s(3) + .5, s(4) + .1), '#fff');
       callout(V3(-8, 10, 12), cb.cam, -140, -40, '−40 °C', '≈ 33,000 ft', win(lt, s(3) + 1.2, s(4) + .1), '#fff');
       const sa = win(lt, s(4), sw2 + .3, .3, .3);
-      T('SUPERCOOLED', W / 2, 560, { s: 110, w: 200, ls: lerp(10, 26, seg(lt, s(4), sw2)), al: 'center', c: ICE, a: sa, glow: 30, glowC: CYAN });
+      KT('SUPERCOOLED', W / 2, 560, { s: 120, w: 300, ls: lerp(10, 26, seg(lt, s(4), sw2)), al: 'center', c: ICE, a: sa, glow: 30, glowC: CYAN, stg: .045 }, s(4), lt);
       T('liquid water, far below 0 °C', W / 2, 620, { s: 26, w: 300, ls: 3, al: 'center', a: sa });
     } else {
       const l = lt - sw2;
@@ -893,7 +1104,7 @@ const SCENES = {
     callout(foil.upperPoint(.6).add(V3(0, .3, 0)), foil.cam, 160, -150, 'FLOW SEPARATION', 'turbulent air, lost lift', win(lt, s(3) + 2.2, s(4) + .2), RED);
     // CL–alpha graph, glowing, no frame
     const ga = win(lt, s(4) + .1, sc.dur + 1, .6, .1);
-    const GX = 1180, GY = 470, GW = 600, GH = 360;
+    const GX = 1180, GY = 420, GW = 600, GH = 360;
     const gx = a => GX + a / 20 * GW, gy = c => GY + GH - c / 1.8 * GH;
     L([[GX, GY], [GX, GY + GH], [GX + GW, GY + GH]], { c: 'rgba(255,255,255,.45)', lw: 1.2, a: ga });
     T('LIFT COEFFICIENT', GX, GY - 22, { s: 16, w: 600, ls: 5, c: 'rgba(255,255,255,.7)', a: ga });
@@ -924,8 +1135,11 @@ const SCENES = {
     const wallS = (vs - mid) * k, wallM = (vm - mid) * k, jetX = gust * k;
     const near = jetX - wallS < 8;
     let cam;
-    if (lt < s(3) - .05) { const u = seg(lt, 0, s(3)); cam = { dist: lerp(60, 52, u), az: lerp(.35, .5, u), el: .04, fov: 30, lookOff: [0, 2, 0] }; }
-    else { const u = seg(lt, s(3), sc.dur); cam = { dist: lerp(150, 135, u), az: lerp(.62, .72, u), el: lerp(.22, .26, u), fov: 30, lookOff: [0, -2, 0], shiftY: 40 }; }
+    if (lt < s(1) - .05) { const u = seg(lt, 0, s(1)); cam = { dist: lerp(60, 50, u), az: lerp(.35, .5, u), el: .04, fov: 30, lookOff: [0, 2, 0] }; }
+    else if (lt < s(2) - .05) { const u = seg(lt, s(1), s(2)); cam = { dist: lerp(22, 18, u), az: lerp(2.7, 2.95, u), el: -.12, fov: 36, lookOff: [3, 1, 0] }; }
+    else if (lt < s(3) - .05) { const u = seg(lt, s(2), s(3)); cam = { dist: lerp(70, 60, u), az: lerp(1.2, 1.35, u), el: .35, fov: 30, lookOff: [0, 0, 0] }; }
+    else if (lt < s(6) - .05 || lt >= s(7) - .05) { const u = seg(lt, s(3), sc.dur); cam = { dist: lerp(150, 120, u), az: lerp(.62, .78, u), el: lerp(.22, .28, u), fov: 30, lookOff: [0, -2, 0], shiftY: 40 }; }
+    else { const u = seg(lt, s(6), s(7)); cam = { dist: lerp(130, 110, u), az: lerp(-.55, -.7, u), el: .3, fov: 30, lookOff: [0, -2, 0], shiftY: 40 }; }
     const res = sky.update(t, { mode: 'day', speed: 90, jetX, cam, walls: walls * .9, wallS, wallM, wallSFlash: near && lt > s(7), roll: gust * .004, shake: lt > s(7) ? .3 : 0,
       texts: [{ id: 'wS', a: walls, world: [wallS, 31, 0], make: () => textPlane((x, pw, ph) => { x.textAlign = 'center'; x.font = '300 150px Inter'; x.letterSpacing = '30px'; x.fillStyle = '#ff6a72'; x.fillText('STALL', pw / 2, 600); }, 30, 15) },
               { id: 'wM', a: walls, world: [wallM, 31, 0], make: () => textPlane((x, pw, ph) => { x.textAlign = 'center'; x.font = '300 150px Inter'; x.letterSpacing = '30px'; x.fillStyle = '#ffc56a'; x.fillText('MACH', pw / 2, 600); }, 30, 15) }] });
@@ -944,9 +1158,9 @@ const SCENES = {
     if (ice > .05) T('+ ICE', 150, 560, { s: 24, w: 600, ls: 6, c: ICE, a: ra * ice });
     if (lt > s(7)) T('+ TURBULENCE  ±30 KT', 150, 600, { s: 24, w: 600, ls: 4, c: CYAN, a: ra * ss(s(7), s(7) + .5, lt) });
     const ca = win(lt, s(5) + 1.4, s(6) - .2, .5, .5);
-    T('COFFIN CORNER', W / 2, 820, { s: 64, w: 200, ls: 20, al: 'center', a: ca, glow: 20, glowC: RED });
-    T('illustrative envelope · ISA standard atmosphere', W - 150, 900, { s: 16, w: 300, ls: 1, al: 'right', c: 'rgba(255,255,255,.5)', a: walls });
-    return { cuts: [s(3)] };
+    KT('COFFIN CORNER', W / 2, 790, { s: 72, w: 300, ls: 20, al: 'center', a: ca, glow: 20, glowC: RED, stg: .04 }, s(5) + 1.4, lt);
+    T('illustrative envelope · ISA standard atmosphere', W - 150, 240, { s: 16, w: 300, ls: 1, al: 'right', c: 'rgba(255,255,255,.5)', a: walls });
+    return { cuts: [s(1), s(2), s(3), s(6), s(7)] };
   },
 
   /* ---------- VI. OVERSPEED ---------- */
@@ -982,11 +1196,11 @@ const SCENES = {
       storm.update(t, { pitch: -1.0, roll: .7, speed: 420, turb: 1.4, flash: fl, cam, rainK: 1.5, shock: isFlex ? 0 : ss(A + .2, A + 1.4, lt), shockF: isFlex ? .62 : lerp(.32, .45, u),
         flex: isFlex ? ss(C + .3, C + 3, lt) * (1 + .15 * Math.sin(lt * 18)) : 0, stress: isFlex ? ss(C + 1.5, D, lt) * (.75 + .25 * Math.sin(lt * 9)) : 0, boltK: .6 });
       post(t, { vig: 1.2 }); if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .1})`; g.fillRect(0, 0, W, H); }
-      if (!isFlex) T('SHOCK WAVE', W / 2, 820, { s: 30, w: 500, ls: 18, al: 'center', c: '#fff1c9', a: win(lt, A + 1, B + .2), glow: 18, glowC: AMBER });
+      if (!isFlex) KT('SHOCK WAVE', W / 2, 780, { s: 52, w: 600, ls: 18, al: 'center', c: '#fff1c9', a: win(lt, A + 1, B + .2), glow: 18, glowC: AMBER }, A + 1, lt);
       else {
         const a = win(lt, C + .4, D + .2);
-        T('LOAD  ∝  SPEED²', W / 2, 800, { s: 54, w: 200, ls: 10, al: 'center', a, glow: 16, glowC: AMBER });
-        T('twice the speed, four times the force', W / 2, 850, { s: 24, w: 300, ls: 2, al: 'center', c: 'rgba(255,255,255,.85)', a });
+        KT('LOAD  ∝  SPEED²', W / 2, 740, { s: 64, w: 300, ls: 10, al: 'center', a, glow: 16, glowC: AMBER }, C + .4, lt);
+        T('twice the speed, four times the force', W / 2, 792, { s: 24, w: 300, ls: 2, al: 'center', c: 'rgba(255,255,255,.85)', a });
       }
       return { cuts: [A, B, C, D], flash: fl.f };
     }
@@ -1009,7 +1223,7 @@ const SCENES = {
       const ea = Math.PI * .85; arrow(nx + 130 + Math.cos(ea + .2) * 150, ny + Math.sin(ea + .2) * 150, nx + 130 + Math.cos(ea) * 150, ny + Math.sin(ea) * 150, { c: RED, lw: 5, a: ma, hs: 22 });
       T('NOSE DOWN', nx - 30, ny + 190, { s: 22, w: 600, ls: 6, al: 'right', c: RED, a: ma });
       const ta = win(lt, s(6), C + .2, .4, .3);
-      T('MACH TUCK', W / 2, 840, { s: 72, w: 200, ls: lerp(14, 24, seg(lt, s(6), C)), al: 'center', a: ta, glow: 18, glowC: RED });
+      KT('MACH TUCK', W / 2, 790, { s: 80, w: 300, ls: lerp(14, 24, seg(lt, s(6), C)), al: 'center', a: ta, glow: 18, glowC: RED, stg: .05 }, s(6), lt);
       return { cuts: [B, C] };
     }
     // NTSB
@@ -1018,9 +1232,9 @@ const SCENES = {
     if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .08})`; g.fillRect(0, 0, W, H); }
     const a = win(lt, D + .4, sc.dur + 1, 1, .1);
     T('NTSB', W / 2, 450, { s: 24, w: 600, ls: 16, al: 'center', c: AMBER, a });
-    T('Evidence of an in-flight breakup.', W / 2, 560, { s: 64, w: 200, ls: 1, al: 'center', a });
+    KT('Evidence of an in-flight breakup.', W / 2, 560, { s: 66, w: 300, ls: 1, al: 'center', a, stg: .025 }, D + .4, lt);
     T('Investigators are still searching for components of the aircraft.', W / 2, 640, { s: 24, w: 300, ls: 1, al: 'center', c: 'rgba(255,255,255,.75)', a: a * ss(D + 2, D + 3, lt) });
-    return { cuts: [D], flash: fl.f * .5 };
+    return { cuts: [D], flash: fl.f * .5, capOff: true };
   },
 
   /* ---------- VII. WHAT WE DON'T KNOW ---------- */
@@ -1029,12 +1243,14 @@ const SCENES = {
     const A = s(3) - .05, B = s(7) - .05;
     if (lt < A) {
       const u = seg(lt, 0, A);
-      const res = sky.update(t, { mode: 'day', speed: 60, hideJet: false, cam: { dist: lerp(110, 90, u), az: 2.25 + u * .12, el: .03, fov: 26, lookOff: [0, 6, 0] } });
+      const k = lt < s(1) - .05 ? 0 : lt < s(2) - .05 ? 1 : 2;
+      const cam = [{ dist: lerp(110, 90, u), az: 2.25 + u * .3, el: .03, fov: 26, lookOff: [0, 6, 0] }, { dist: lerp(26, 18, u), az: lerp(.4, .9, u), el: .08, fov: 32, lookOff: [2, 1, 0] }, { dist: lerp(90, 120, u), az: lerp(3.4, 3.6, u), el: .3, fov: 28, lookOff: [0, -4, 0] }][k];
+      const res = sky.update(t, { mode: 'day', speed: 80, hideJet: false, cam });
       flare(res.sunWorld, sky.cam, .6); post(t);
       T('HYPOTHESES, NOT CONCLUSIONS', W / 2, 330, { s: 30, w: 400, ls: 16, al: 'center', a: win(lt, s(0) + .1, A + .2) });
       const items = [['PRELIMINARY REPORT', 'expected within weeks', s(1) + 2.5], ['PROBABLE CAUSE', 'typically 12 to 24 months', s(2) + .1]];
       items.forEach(([a1, b1, ts], i) => { const a = win(lt, ts, A + .2); const y = 790 + i * 0; const x = 150 + i * 620; L([[x, y - 60], [x + 60 * eout(clamp(a * 1.3)), y - 60]], { c: AMBER, lw: 2, a }); T(a1, x, y - 14, { s: 26, w: 600, ls: 6, a }); T(b1, x, y + 28, { s: 24, w: 300, c: 'rgba(255,255,255,.85)', a }); });
-      return { cuts: [] };
+      return { cuts: [s(1), s(2)] };
     }
     if (lt < B) {
       const u = seg(lt, A, B);
@@ -1043,8 +1259,8 @@ const SCENES = {
       post(t); if (fl.f) { g.fillStyle = `rgba(255,230,210,${fl.f * .06})`; g.fillRect(0, 0, W, H); }
       const [sx, sy] = proj(V3(-10, 10.7, 1), cb.cam); T('×', sx, sy + 14, { s: 50, w: 200, al: 'center', c: RED, a: win(lt, s(4) + .6, s(5) + .8, .3, .8) });
       const [rx, ry] = proj(V3(26, 10.7, -26), cb.cam); T('20 NM', rx + 20, ry, { s: 34, w: 300, ls: 6, c: GREEN, a: ss(s(5) + .8, s(5) + 1.6, lt) }); T('≈ 37 km', rx + 20, ry + 34, { s: 20, w: 300, c: 'rgba(255,255,255,.8)', a: ss(s(5) + .8, s(5) + 1.6, lt) });
-      T("Inside, physics doesn't negotiate.", W / 2, 830, { s: 52, w: 200, ls: 1, al: 'center', a: win(lt, s(6) + .1, B + .3, .8, .5) });
-      return { cuts: [A, B] };
+      KT("Inside, physics doesn't negotiate.", W / 2, 800, { s: 60, w: 300, ls: 1, al: 'center', a: win(lt, s(6) - .05, B + .3, .3, .5), stg: .02 }, s(6) - .05, lt);
+      return { cuts: [A, B], capOff: lt > s(6) - .1 };
     }
     clearGL();
     g.fillStyle = '#01020a'; g.fillRect(0, 0, W, H);
@@ -1061,7 +1277,7 @@ const SCENES = {
     T('Greenacres, Florida  ·  November 1, 2026', W / 2, 870, { s: 20, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.6)', a: a2 * ss(B + 7.5, B + 8.5, lt) });
     T('Sources: NTSB · FAA · Flightradar24 · LiveATC · CNN · CBS12 · NBC Miami · WPTV', W / 2, 920, { s: 16, w: 300, ls: 1, al: 'center', c: 'rgba(255,255,255,.45)', a: a * ss(B + 9, B + 10, lt) });
     post(t);
-    return { cuts: [], fadeOut: 2.5 };
+    return { cuts: [], fadeOut: 2.5, capOff: true };
   },
 };
 
@@ -1072,11 +1288,18 @@ function renderFrame(t) {
   const lt = t - sc.start;
   g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   const res = SCENES[sc.id](lt, sc, t) || {};
+  captions(sc, lt, res.capOff ? 0 : (res.capK ?? 1));
   chapterCard(sc, lt);
-  // cuts: brief dip (hard-cut feel, 3 frames)
+  // camera FX on the 3D layer: whip-pan at every cut, punch-in on emphasised words, impact shake
+  let whip = 0, dir = 1;
+  for (const [i, c] of (res.cuts || []).entries()) { const d = lt - c; if (Math.abs(d) < .16) { const k = 1 - Math.abs(d) / .16; if (k > Math.abs(whip)) { whip = k * k; dir = (i % 2 ? -1 : 1) * Math.sign(d || 1); } } }
+  let punch = 0; for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < 1) punch = Math.max(punch, Math.exp(-d * 5) * ss(0, .04, d)); }
+  const fl = flashAt(t).f * (res.flash !== undefined ? 1 : 0);
+  const shx = (Math.sin(t * 61) + Math.sin(t * 37)) * (punch * 5 + fl * 7), shy = (Math.sin(t * 53 + 1) + Math.sin(t * 29)) * (punch * 4 + fl * 6);
+  GL.style.transform = `translate(${(dir * whip * 240 + shx).toFixed(1)}px,${shy.toFixed(1)}px) scale(${(1 + punch * .045 + whip * .27).toFixed(4)})`;
+  GL.style.filter = `contrast(1.14) saturate(1.18) brightness(.97) blur(${(whip * 16).toFixed(1)}px)`;
   let black = 0;
-  for (const c of res.cuts || []) { const d = Math.abs(lt - c); if (d < .09) black = Math.max(black, 1 - d / .09); }
-  const edge = Math.min(lt, sc.dur - lt); black = Math.max(black, 1 - clamp(edge / .35));
+  const edge = Math.min(lt, sc.dur - lt); black = Math.max(black, 1 - clamp(edge / .25));
   if (res.fadeIn) black = Math.max(black, 1 - clamp(lt / res.fadeIn));
   if (res.fadeOut) black = Math.max(black, ss(sc.dur - res.fadeOut, sc.dur, lt));
   if (black > 0) { g.fillStyle = `rgba(0,0,0,${black})`; g.fillRect(0, 0, W, H); }

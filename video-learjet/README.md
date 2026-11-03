@@ -20,14 +20,16 @@ A causa provável não está determinada. O vídeo apresenta hipóteses físicas
 
 ## Estrutura (≈ 4 min 27 s)
 
-0. **Cold open**: dentro da tempestade, contador de altitude 35,000 → 8,750 ft, título *SIXTY SECONDS*.
-1. **Flight N722BD**: voo noturno sobre o mapa do Golfo, com luzes das cidades e células de trovoada sobre Palm Beach.
-2. **The Right Seat**: jato ao pôr do sol, com as idades mínimas da FAA (17 · 18 · SIC · 23) em tipografia integrada no céu.
-3. **Into the Storm**: tráfego rádio, cumulonimbo ao pôr do sol em modo raio-X (correntes ascendentes, nível de congelação, água em sobrefusão) e congelamento instantâneo no bordo de ataque.
+Em todos os capítulos há legendas cinéticas: cada palavra aparece quando é dita, e números, perigo, gelo e física têm cores próprias. Os cortes são whip-pans, a câmara faz punch-in nas palavras-chave e treme com os relâmpagos. Os títulos aparecem letra a letra.
+
+0. **Cold open** (de dia): o jato passa a FL350 em céu limpo, o cumulonimbo surge à frente, o avião entra na célula e mergulha com o contador de altitude 35,000 → 8,750 ft. Título *SIXTY SECONDS* sobre as nuvens iluminadas pelo sol.
+1. **Flight N722BD**: rota Austin → Golfo do México e descida do mapa regional até ao nível da rua em Greenacres. O local fica na Military Trail junto à 10th Ave N, a ~7 km da praia, com a I-95, a Lake Worth Lagoon e o aeroporto PBI. Mostra a cratera na estrada e o lugar da direita no cockpit.
+2. **The Right Seat**: idades mínimas da FAA (17 · 18 · SIC · 23), com um ângulo de câmara por frase.
+3. **Into the Storm**: tráfego rádio, cumulonimbo em raio-X filmado de quatro ângulos e congelamento instantâneo no bordo de ataque.
 4. **Ice**: escoamento potencial exato num perfil de Joukowski, gelo em "cornos", separação e curva CL–α.
-5. **The Coffin Corner**: "paredes" de perda e de Mach que se fecham à volta do jato (atmosfera ISA calculada).
-6. **Overspeed**: mergulho, 32,000 ft/min = 160 m/s = 360 mph, onda de choque na asa 3D, Mach tuck, flexão da asa (carga ∝ v²) e conclusão preliminar do NTSB.
-7. **What We Don't Know**: prazos do NTSB, contorno de 20 NM em vista aérea e memória das vítimas.
+5. **The Coffin Corner**: "paredes" de perda e de Mach que se fecham à volta do jato (atmosfera ISA).
+6. **Overspeed**: mergulho, onda de choque, Mach tuck, carga ∝ v² e conclusão preliminar do NTSB.
+7. **What We Don't Know**: prazos do NTSB, contorno de 20 NM e memória das nove vítimas.
 
 ## Gerar a voz com o ElevenLabs (no teu computador)
 
@@ -40,15 +42,15 @@ python3 elevenlabs_tts.py                    # → audio/scene_*.mp3 + audio/tim
 
 Depois há duas opções:
 
-**A. Rápida (sem voltar a renderizar):** `python3 mux.py --burn`. A voz de cada cena é colocada no seu slot e ajustada (atempo 0,8–1,25×) à duração planeada. O resultado é `out/final.mp4`, com legendas queimadas e `out/legendas.srt`.
+**A. Rápida (sem voltar a renderizar):** `python3 mux.py`. A voz de cada cena é colocada no seu slot e ajustada (atempo 0,8–1,25×) à duração planeada. O resultado é `out/final.mp4`, mais `out/legendas.srt` para o YouTube. Não uses `--burn`, porque as legendas cinéticas já fazem parte da imagem.
 
-**B. Sincronia perfeita:** volta a renderizar com os tempos reais da voz, porque cada animação está presa ao início de cada frase:
+**B. Sincronia perfeita (recomendado):** volta a renderizar com os tempos reais da voz. Assim cada palavra das legendas cinéticas, cada corte e cada punch-in coincidem com a narração:
 
 ```bash
 npm install                       # three.js
 npm i -D playwright && npx playwright install chromium
 ./render_all.sh                   # → out/video_silent.mp4 (lê audio/timings.json)
-python3 mux.py --burn             # → out/final.mp4
+python3 mux.py                    # → out/final.mp4
 ```
 
 ## Ficheiros

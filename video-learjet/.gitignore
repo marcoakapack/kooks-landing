@@ -3,3 +3,6 @@ audio/
 .env
 out/*
 !out/video_sem_voz_web.mp4
+# Local secrets written by `elevenlabs onboard`
+/.env.local
+.env.local

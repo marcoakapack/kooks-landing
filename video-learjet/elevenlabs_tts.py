@@ -57,9 +57,18 @@ for i, sc in enumerate(scenes):
         if k < 0:  # fallback: proportional position
             k = min(len(starts) - 1, int(len(starts) * text.find(s) / max(1, len(text))))
         sstarts.append(round(starts[k], 3)); pos = k + 1
+    # word timings for the kinetic captions (same tokenisation as index.html: text.split())
+    wstarts, wends, pos = [], [], 0
+    for w in text.split():
+        k = joined.find(w, pos)
+        if k < 0:
+            k = min(len(starts) - 1, pos)
+        e = min(len(ends) - 1, k + len(w) - 1)
+        wstarts.append(round(starts[k], 3)); wends.append(round(ends[e], 3)); pos = k + len(w)
     dur = round(ends[-1] + 0.05, 3)
-    timings["scenes"].append({"id": sc["id"], "file": mp3.name, "duration": dur, "sentence_starts": sstarts})
+    timings["scenes"].append({"id": sc["id"], "file": mp3.name, "duration": dur, "sentence_starts": sstarts,
+                              "word_starts": wstarts, "word_ends": wends})
     print(f"    {dur:.2f} s, {len(sents)} frases")
 
 (out / "timings.json").write_text(json.dumps(timings, indent=2, ensure_ascii=False), encoding="utf-8")
-print("OK → audio/timings.json. Agora: node render.mjs   e depois   python3 mux.py")
+print("OK → audio/timings.json. Agora: ./render_all.sh   e depois   python3 mux.py")
