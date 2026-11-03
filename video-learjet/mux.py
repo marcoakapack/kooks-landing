@@ -76,12 +76,13 @@ def bed_loop(x, a, b, gain, xf=1.5):
         place(x[:seg_len], t0, gain, xf, xf); t0 += (L - k) / SR
 sc_by = {s["id"]: s for s in tl["scenes"]}
 def S(sid, k): s = sc_by[sid]; ss_ = s.get("sentence_starts", []); return s["start"] + (ss_[k] if k < len(ss_) else s["dur"])
-AMB = {"hook": [("amb_storm", .55)], "facts": [("amb_high", .5)], "storm": [("amb_storm", .7)], "ice": [("amb_cabin", .35)],
+AMB = {"hook": [], "facts": [("amb_high", .5)], "storm": [("amb_storm", .7)], "ice": [("amb_cabin", .35)],
        "coffin": [("amb_high", .5)], "dive": [("amb_storm", .6)], "outro": [("amb_high", .25)]}
 for s in tl["scenes"]:
     for name, gn in AMB.get(s["id"], []):
         if name in REAL: bed_loop(REAL[name], max(0, s["start"] - .8), s["start"] + s["dur"] + .8, gn)
-if "jet_flyby" in REAL: place(REAL["jet_flyby"], .2, .9)
+if "amb_high" in REAL: bed_loop(REAL["amb_high"], 0, S("hook", 1) + .6, .6)
+if "amb_storm" in REAL: bed_loop(REAL["amb_storm"], S("hook", 1) - .4, sc_by["hook"]["start"] + sc_by["hook"]["dur"] + .8, .55)
 if "ice_crackle" in REAL and "ice" in sc_by: place(REAL["ice_crackle"], S("ice", 3) + .4, .8, .3, 1.5)
 if "amb_dive" in REAL and "dive" in sc_by: place(REAL["amb_dive"], S("dive", 1), .8, 1.5, 2.0)
 if "overspeed" in REAL and "dive" in sc_by: place(REAL["overspeed"], S("dive", 2), .35, .05, 1.0)
@@ -144,10 +145,8 @@ def hit(at, gain=1.0):
     sfx[a:a + n] += (body + click) * gain
 cuts = sorted({c for f in (OUT / "parts").glob("*.cuts.json") for c in json.loads(f.read_text())}) if (OUT / "parts").exists() else []
 last = -9
-for c in cuts:
-    if c - last > .35 and c > .5: whoosh(c, .9); last = c
 for p in tl.get("punches", []): hit(p, .8)
-for s in tl["scenes"][1:]: hit(s["start"] + .1, 1.3); whoosh(s["start"] + .05, 1.3, .8)
+for s in tl["scenes"][1:]: hit(s["start"] + .1, 1.3)
 sfx = sfx / (np.abs(sfx).max() + 1e-9) * .5
 with wave.open(str(OUT / "sfx.wav"), "wb") as w:
     w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR)

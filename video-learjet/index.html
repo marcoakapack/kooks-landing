@@ -892,7 +892,7 @@ const SCENES = {
       flare(res.sunWorld, sky.cam, .8); post(t);
       const a0 = win(lt, s(0) - .1, c1 + .2, .2, .2);
       KT('35,000', 150, 700, { s: 190, w: 200, ls: -2, a: a0, dy: 60, stg: .05 }, s(0) - .1, lt);
-      KT('FEET  ·  FL350', 156, 760, { s: 26, w: 600, ls: 9, c: AMBER, a: a0, dy: 20 }, s(0) + .25, lt);
+      KT('FEET  ·  FL350', 156, 800, { s: 26, w: 600, ls: 9, c: AMBER, a: a0, dy: 20 }, s(0) + .25, lt);
       ret.capOff = true;
     } else if (lt < c2) {
       // 2. the towering cumulonimbus ahead, jet heading straight into it
@@ -1287,8 +1287,18 @@ function renderFrame(t) {
   captions(sc, lt, res.capOff ? 0 : (res.capK ?? 1));
   chapterCard(sc, lt);
   // camera FX on the 3D layer: whip-pan at every cut, punch-in on emphasised words, impact shake
-  let whip = 0, dir = 1;
-  for (const [i, c] of (res.cuts || []).entries()) { const d = lt - c; if (Math.abs(d) < .16) { const k = 1 - Math.abs(d) / .16; if (k > Math.abs(whip)) { whip = k * k; dir = (i % 2 ? -1 : 1) * Math.sign(d || 1); } } }
+  let whip = 0, dir = 1, tr = 0, trDur = .16;
+  for (const [i, c] of (res.cuts || []).entries()) {
+    const ty = (Math.round(c * 37) + sc.idx * 3 + i) % 6, D = ty === 2 ? .3 : (ty === 5 ? .35 : .16), d = lt - c;
+    if (Math.abs(d) < D) { const k = 1 - Math.abs(d) / D; if (k * k > whip) { whip = k * k; tr = ty; trDur = D; dir = (i % 2 ? -1 : 1) * Math.sign(d || 1); } }
+  }
+  // transition styles (no flashes): 0 hard cut · 1 horizontal whip · 2 zoom-through · 3 vertical whip · 4 roll-whip · 5 focus pull
+  let tx = 0, ty2 = 0, tz = 0, trot = 0, tblur = 0;
+  if (tr === 1) { tx = dir * whip * 240; tblur = whip * 16; }
+  else if (tr === 2) { tz = whip * .35; tblur = whip * 8; }
+  else if (tr === 3) { ty2 = dir * whip * 160; tblur = whip * 14; }
+  else if (tr === 4) { trot = dir * whip * 7; tz = whip * .12; tblur = whip * 10; }
+  else if (tr === 5) { tblur = whip * 18; tz = whip * .04; }
   let punch = 0; for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < 1) punch = Math.max(punch, Math.exp(-d * 5) * ss(0, .04, d)); }
   const fl = flashAt(t).f * (res.flash !== undefined ? 1 : 0);
   const shx = 0, shy = 0;
@@ -1303,13 +1313,12 @@ function renderFrame(t) {
     const lvl = kk => (kk % 2) * .14 + (kk % 3 === 2 ? .06 : 0);
     const e = ss(0, .14, into); jz = lerp(lvl(k - 1 < 0 ? 0 : k - 1), lvl(k), k ? e : 1);
     const side = ((shotN + k) % 3 - 1); jx = side * 70 * jz / .14; jy = -20 * jz / .14;
-    if (k && into < .14) whip = Math.max(whip, (1 - into / .14) * .35);
     if (k) CUTS_ABS.add(+(sc.start + s0 + k * seg2).toFixed(3));
   }
   (res.cuts || []).forEach(c => { if (c > 0 && c < sc.dur) CUTS_ABS.add(+(sc.start + c).toFixed(3)); }); CUTS_ABS.add(+sc.start.toFixed(3));
-  const Z = drift * (1 + jz) * (1 + punch * .05 + whip * .27);
-  GL.style.transform = `translate(${(dir * whip * 240 + shx - jx).toFixed(1)}px,${(shy - jy).toFixed(1)}px) scale(${Z.toFixed(4)})`;
-  GL.style.filter = `contrast(1.14) saturate(1.18) brightness(.97) blur(${(whip * 16).toFixed(1)}px)`;
+  const Z = drift * (1 + jz) * (1 + punch * .05 + tz);
+  GL.style.transform = `translate(${(tx + shx - jx).toFixed(1)}px,${(ty2 + shy - jy).toFixed(1)}px) rotate(${trot.toFixed(2)}deg) scale(${(Z * (1 + Math.abs(trot) * .012)).toFixed(4)})`;
+  GL.style.filter = `contrast(1.14) saturate(1.18) brightness(.97) blur(${tblur.toFixed(1)}px)`;
   let black = 0;
   const edge = Math.min(lt, sc.dur - lt); black = Math.max(black, (1 - clamp(edge / .1)) * .8);
   if (res.fadeIn) black = Math.max(black, 1 - clamp(lt / res.fadeIn));
