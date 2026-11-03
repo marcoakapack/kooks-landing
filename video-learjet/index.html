@@ -6,6 +6,7 @@
 <style>
   html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
   canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+  #gl{filter:contrast(1.14) saturate(1.18) brightness(.97)}
 </style>
 <script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
 </head>
@@ -57,7 +58,7 @@ function T(str, x, y, o = {}) {
   g.font = `${o.it ? 'italic ' : ''}${o.w || 400} ${o.s || 40}px Inter, "Inter Display", sans-serif`;
   g.fillStyle = o.c || '#fff'; g.textAlign = o.al || 'left'; g.textBaseline = 'alphabetic';
   g.letterSpacing = (o.ls || 0) + 'px';
-  if (o.glow) { g.shadowColor = o.glowC || o.c || '#fff'; g.shadowBlur = o.glow; } else { g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = o.sb ?? 22; }
+  if (o.glow) { g.shadowColor = o.glowC || o.c || '#fff'; g.shadowBlur = o.glow; } else { g.shadowColor = 'rgba(0,6,18,.7)'; g.shadowBlur = o.sb ?? 24; }
   g.fillText(str, x, y); const w = g.measureText(str).width; g.restore(); return w;
 }
 function L(pts, o = {}) {
@@ -108,7 +109,11 @@ const GRAIN = Array.from({ length: 4 }, (_, k) => { const c = document.createEle
 function post(t, o = {}) {
   // vignette
   const vg = g.createRadialGradient(W / 2, H / 2, H * .32, W / 2, H / 2, H * 1.0);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${.7 * (o.vig ?? 1)})`); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${.5 * (o.vig ?? 1)})`); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  let sc = g.createLinearGradient(0, H - BAR - 300, 0, H - BAR); sc.addColorStop(0, 'rgba(0,8,20,0)'); sc.addColorStop(1, 'rgba(0,8,20,.5)'); g.fillStyle = sc; g.fillRect(0, H - BAR - 300, W, 300);
+  sc = g.createLinearGradient(0, BAR, 0, BAR + 200); sc.addColorStop(0, 'rgba(0,8,20,.3)'); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(0, BAR, W, 200);
+  if (o.side) { sc = g.createLinearGradient(0, 0, 900, 0); sc.addColorStop(0, `rgba(0,8,20,${.45 * o.side})`); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(0, 0, 900, H); }
+  if (o.right) { sc = g.createLinearGradient(W, 0, W - 900, 0); sc.addColorStop(0, `rgba(0,8,20,${.45 * o.right})`); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(W - 900, 0, 900, H); }
   // grain
   const f = Math.floor(t * 24); const r = rng(f * 7 + 3);
   g.save(); g.globalCompositeOperation = 'overlay'; g.globalAlpha = .1; g.translate(-r() * 384, -r() * 384); g.fillStyle = GRAIN[f % 4]; g.fillRect(0, 0, W + 384, H + 384); g.restore();
@@ -146,18 +151,19 @@ function textPlane(drawFn, w, h, pw = 2048, ph = 1024) {
 }
 function numberPlane(num, label, col = '#ffffff') {
   return textPlane((x, pw, ph) => {
-    x.textAlign = 'center'; x.fillStyle = col; x.font = '200 620px Inter'; x.letterSpacing = '-10px'; x.fillText(num, pw / 2, 640);
+    x.textAlign = 'center'; x.shadowColor = 'rgba(0,25,60,.45)'; x.shadowBlur = 40; x.fillStyle = col; x.font = '200 620px Inter'; x.letterSpacing = '-10px'; x.fillText(num, pw / 2, 640);
     x.font = '500 84px Inter'; x.letterSpacing = '22px'; x.fillStyle = 'rgba(255,255,255,.9)'; x.fillText(label, pw / 2, 850);
   }, 48, 24);
 }
 
 /* ============================== SKY DOME / ENV ============================== */
 const PRESETS = {
-  stormEnv: { top: [.42, .46, .54], hor: [.28, .31, .37], bot: [.08, .09, .11], sun: [0, 1, 0], sunCol: [0, 0, 0], sunK: 0, fog: [.12, .15, .2] },
+  day: { top: [.03, .14, .42], hor: [.56, .72, .9], bot: [.8, .84, .9], sun: [.45, .7, -.55], sunCol: [1, .97, .9], sunK: .9, fog: [.62, .75, .9] },
+  stormEnv: { top: [.78, .8, .84], hor: [.58, .6, .64], bot: [.32, .34, .37], sun: [0, 1, 0], sunCol: [0, 0, 0], sunK: 0, fog: [.12, .15, .2] },
   gold: { top: [.13, .24, .48], hor: [1, .64, .38], bot: [.52, .4, .38], sun: [1, .055, -.42], sunCol: [1, .82, .58], sunK: 1, fog: [.95, .66, .48] },
   dusk: { top: [.035, .055, .15], hor: [.9, .44, .28], bot: [.2, .16, .22], sun: [1, .01, -.25], sunCol: [1, .5, .28], sunK: .8, fog: [.62, .36, .3] },
   night: { top: [.006, .009, .025], hor: [.05, .07, .13], bot: [.02, .025, .04], sun: [0, 1, 0], sunCol: [0, 0, 0], sunK: 0, fog: [.04, .05, .09] },
-  cb: { top: [.06, .1, .24], hor: [.92, .52, .36], bot: [.1, .1, .15], sun: [-1, .05, .35], sunCol: [1, .6, .35], sunK: .9, fog: [.55, .38, .36] },
+  cb: { top: [.1, .28, .6], hor: [.72, .81, .92], bot: [.4, .46, .54], sun: [-.5, .85, .35], sunCol: [1, .97, .9], sunK: .8, fog: [.7, .78, .89] },
 };
 function skyDome() {
   const U = { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, bot: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(1, 0, 0) }, sunCol: { value: new THREE.Color() }, sunK: { value: 0 } };
@@ -288,17 +294,17 @@ function makeBolt(seed) {
 /* ============================== WORLD: STORM ============================== */
 function makeStorm() {
   const scene = new THREE.Scene();
-  const fogC = new THREE.Color(0x1b2330), flashC = new THREE.Color(0x9fb4dd);
-  scene.background = fogC.clone(); scene.fog = new THREE.FogExp2(fogC.clone(), .0042);
+  const fogC = new THREE.Color(0x56606c), flashC = new THREE.Color(0xdbe5f5);
+  scene.background = fogC.clone(); scene.fog = new THREE.FogExp2(fogC.clone(), .003);
   scene.environment = envFor('stormEnv');
-  const hemi = new THREE.HemisphereLight(0x9fb3d0, 0x10141c, 1.0); scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xc8d4e6, .9); key.position.set(30, 80, 30); scene.add(key);
+  const hemi = new THREE.HemisphereLight(0xdfe7f2, 0x4a525c, 2.0); scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xf2f5fa, 1.6); key.position.set(30, 80, 30); scene.add(key);
   const flashL = new THREE.DirectionalLight(0xe8eeff, 0); flashL.position.set(-40, 60, -80); scene.add(flashL);
   const jet = makeJet(); scene.add(jet.group);
   const cam = new THREE.PerspectiveCamera(40, W / H, .3, 5000);
   const r = rng(7), clouds = []; const B = { x: 380, y: 200, z: 280 };
   for (let i = 0; i < 240; i++) {
-    const shade = .3 + r() * .32; const col = new THREE.Color(shade * .9, shade * .96, shade * 1.07);
+    const shade = .45 + r() * .38; const col = new THREE.Color(shade * .95, shade * .98, shade * 1.03);
     const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[i % 3], color: col.clone(), transparent: true, opacity: .55 + r() * .4, depthWrite: false });
     const s = new THREE.Sprite(m); const sc = 70 + r() * 140; s.scale.set(sc, sc * .8, 1);
     s.userData = { base: V3((r() * 2 - 1) * B.x, (r() * 2 - 1) * B.y, (r() * 2 - 1) * B.z), col, op: m.opacity }; scene.add(s); clouds.push(s);
@@ -345,7 +351,7 @@ function makeStorm() {
       const k = clamp(o.flash.f * 1.3) * (o.boltK ?? 1); b.userData.core.opacity = k; b.userData.halo.opacity = k * .22;
     }
     scene.background.copy(fogC).multiplyScalar(o.dark ?? 1).lerp(flashC, fl * .55); scene.fog.color.copy(scene.background);
-    flashL.intensity = fl * 6; hemi.intensity = 1.0 * (o.dark ?? 1); key.intensity = .9 * (o.dark ?? 1);
+    flashL.intensity = fl * 6; hemi.intensity = 2.0 * (o.dark ?? 1); key.intensity = 1.6 * (o.dark ?? 1);
     draw(scene, cam, o.bloom ?? .75, .82);
   }
   return { scene, cam, jet, update };
@@ -354,7 +360,7 @@ function makeStorm() {
 /* ============================== WORLD: SKY (gold / dusk / night) ============================== */
 function makeSky() {
   const scene = new THREE.Scene(); const dome = skyDome(); scene.add(dome.mesh);
-  scene.fog = new THREE.Fog(0xffffff, 300, 1100);
+  scene.fog = new THREE.Fog(0xffffff, 500, 2400);
   const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x8a7c70, 1.2); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff0d8, 3.2); scene.add(sun);
   const jet = makeJet(); scene.add(jet.group);
@@ -369,21 +375,21 @@ function makeSky() {
   const planes = {};
   // coffin corner walls
   const wallTex = (() => { const c = document.createElement('canvas'); c.width = 512; c.height = 512; const x = c.getContext('2d');
-    const gr = x.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.22)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 512, 512);
+    const gr = x.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.42)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 512, 512);
     x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 2; for (let i = 0; i <= 512; i += 32) { x.globalAlpha = .5; x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 512); x.stroke(); x.beginPath(); x.moveTo(0, i); x.lineTo(512, i); x.stroke(); }
     const t = new THREE.CanvasTexture(c); return t; })();
-  const mkWall = col => { const m = new THREE.Mesh(new THREE.PlaneGeometry(90, 56), new THREE.MeshBasicMaterial({ map: wallTex, color: col, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })); m.rotation.y = Math.PI / 2; scene.add(m); return m; };
+  const mkWall = col => { const m = new THREE.Mesh(new THREE.PlaneGeometry(90, 56), new THREE.MeshBasicMaterial({ map: wallTex, color: col, transparent: true, opacity: 0, blending: THREE.NormalBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })); m.rotation.y = Math.PI / 2; scene.add(m); return m; };
   const wallS = mkWall(0xff3a48), wallM = mkWall(0xffb547);
   const off = V3(0, 0, 0); let lastT = null;
   function update(t, o) {
     const dt = lastT === null ? 0 : clamp(t - lastT, 0, .1); lastT = t;
-    const p = PRESETS[o.mode || 'gold']; dome.set(p);
-    scene.environment = envFor(o.mode || 'gold');
+    const p = PRESETS[o.mode || 'day']; dome.set(p);
+    scene.environment = envFor(o.mode || 'day');
     scene.fog.color.setRGB(...p.fog, THREE.SRGBColorSpace);
     sun.position.set(...p.sun).normalize().multiplyScalar(100); sun.color.setRGB(...p.sunCol, THREE.SRGBColorSpace);
     sun.intensity = o.mode === 'night' ? 0 : 3.4; hemi.intensity = o.mode === 'night' ? .25 : 1.1;
     off.x -= (o.speed ?? 90) * dt;
-    const cc = o.mode === 'night' ? [.12, .14, .2] : (o.mode === 'dusk' ? [1, .66, .56] : [1, .9, .8]);
+    const cc = o.mode === 'night' ? [.12, .14, .2] : (o.mode === 'dusk' ? [1, .66, .56] : (o.mode === 'day' ? [1, 1, 1] : [1, .9, .8]));
     for (const s of clouds) { const b = s.userData.base; s.position.set(wrap(b.x + off.x, -900, 900), b.y, b.z); s.material.color.setRGB(cc[0] * s.userData.sh, cc[1] * s.userData.sh, cc[2] * s.userData.sh, THREE.SRGBColorSpace); }
     jet.group.position.set(o.jetX || 0, Math.sin(t * .7) * .4, 0);
     jet.group.rotation.set(Math.sin(t * .5) * .03 + (o.roll || 0), 0, Math.sin(t * .6) * .015 + (o.pitch || 0));
@@ -392,7 +398,7 @@ function makeSky() {
     // walls
     const wk = o.walls || 0;
     wallS.position.set(o.wallS ?? -30, 0, 0); wallM.position.set(o.wallM ?? 30, 0, 0);
-    wallS.material.opacity = wk * (o.wallSFlash ? 1.6 : 1); wallM.material.opacity = wk;
+    wallS.material.opacity = Math.min(1, wk * (o.wallSFlash ? 1.4 : 1)); wallM.material.opacity = wk;
     for (const k in planes) planes[k].material.opacity = 0;
     if (o.texts) for (const tx of o.texts) {
       const pl = planes[tx.id] || (planes[tx.id] = (() => { const m = tx.make(); scene.add(m); return m; })());
@@ -410,14 +416,14 @@ function makeSky() {
 
 /* ============================== WORLD: NIGHT MAP ============================== */
 function makeMap() {
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x02050b);
-  scene.fog = new THREE.Fog(0x02050b, 8, 30);
-  scene.add(new THREE.HemisphereLight(0x6f8fd0, 0x02040a, .9));
-  const moon = new THREE.DirectionalLight(0xbcd0ff, 1.0); moon.position.set(-5, 8, 4); scene.add(moon);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xa9c8e6);
+  scene.fog = new THREE.Fog(0xa9c8e6, 10, 34);
+  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x40505a, 1.6));
+  const moon = new THREE.DirectionalLight(0xfff6e8, 2.4); moon.position.set(-5, 8, 4); scene.add(moon);
   const ll = (lon, lat, y = 0) => V3(lon + 86, y, -(lat - 27));
-  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(140, 90), new THREE.MeshStandardMaterial({ color: 0x03070e, roughness: .7, metalness: .2 }));
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(140, 90), new THREE.MeshStandardMaterial({ color: 0x1b5f8c, roughness: .35, metalness: .1 }));
   ocean.rotation.x = -Math.PI / 2; ocean.position.y = -.02; scene.add(ocean);
-  scene.environment = envFor('night');
+  scene.environment = envFor('day');
   const polys = [
     [[-110, 16], [-96.4, 18.7], [-96.1, 19.4], [-96.6, 20.2], [-97.2, 20.7], [-97.7, 21.8], [-97.8, 22.8], [-97.6, 24.3], [-97.4, 25.4], [-97.2, 25.95], [-97.4, 26.8], [-97.3, 27.6], [-96.8, 28.2], [-95.9, 28.6], [-95.0, 29.2], [-94.7, 29.4], [-93.8, 29.7], [-93.0, 29.75], [-92.2, 29.55], [-91.3, 29.3], [-90.6, 29.1], [-90.0, 29.15], [-89.4, 28.95], [-89.2, 29.3], [-89.6, 29.7], [-89.5, 30.1], [-89.0, 30.35], [-88.4, 30.38], [-88.0, 30.25], [-87.5, 30.32], [-86.6, 30.4], [-86.0, 30.25], [-85.5, 29.95], [-85.1, 29.65], [-84.6, 29.85], [-84.1, 30.05], [-83.7, 29.9], [-83.2, 29.4], [-82.8, 29.0], [-82.75, 28.4], [-82.85, 27.9], [-82.65, 27.45], [-82.4, 27.0], [-82.15, 26.65], [-81.85, 26.3], [-81.75, 25.9], [-81.4, 25.6], [-81.1, 25.25], [-80.6, 25.15], [-80.35, 25.35], [-80.25, 25.75], [-80.1, 26.3], [-80.04, 26.8], [-80.15, 27.3], [-80.35, 27.85], [-80.6, 28.4], [-80.6, 28.65], [-80.85, 29.1], [-81.15, 29.7], [-81.35, 30.3], [-81.4, 30.75], [-81.25, 31.4], [-80.95, 31.95], [-80.5, 32.4], [-79.9, 32.8], [-79.2, 33.3], [-78.6, 33.85], [-77.9, 34.0], [-77.3, 34.6], [-76.5, 34.75], [-75.6, 35.3], [-75.8, 36.2], [-76.0, 37.0], [-75.7, 38.0], [-75.0, 38.8], [-74, 44], [-110, 44]],
     [[-84.95, 21.85], [-84.0, 22.65], [-83.2, 22.95], [-82.5, 23.1], [-81.6, 23.15], [-80.6, 23.05], [-79.6, 22.6], [-78.6, 22.35], [-77.6, 21.85], [-76.5, 21.2], [-75.6, 21.1], [-74.6, 20.6], [-74.15, 20.25], [-74.5, 20.0], [-75.7, 19.9], [-77.4, 19.85], [-77.6, 20.4], [-78.4, 21.4], [-79.5, 21.6], [-80.5, 21.8], [-81.5, 22.2], [-82.2, 22.4], [-83.4, 22.2], [-84.3, 21.9]],
@@ -425,8 +431,8 @@ function makeMap() {
     [[-78.3, 25.2], [-77.7, 25.0], [-77.6, 24.2], [-77.9, 23.8], [-78.4, 24.4]], [[-77.55, 25.08], [-77.25, 25.08], [-77.3, 24.98], [-77.55, 24.98]],
     [[-76.75, 25.55], [-76.55, 25.5], [-76.3, 25.1], [-76.15, 24.7], [-76.25, 24.65], [-76.45, 25.0], [-76.65, 25.35], [-76.8, 25.5]], [[-76.8, 24.6], [-76.6, 24.5], [-76.0, 23.6], [-75.9, 23.65], [-76.5, 24.4]],
   ];
-  const landMat = new THREE.MeshStandardMaterial({ color: 0x0a1018, roughness: .95 });
-  const edgeMat = new THREE.LineBasicMaterial({ color: 0x4fa8d8, transparent: true, opacity: .35 });
+  const landMat = new THREE.MeshStandardMaterial({ color: 0x5f6e45, roughness: .95 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xf2f0e0, transparent: true, opacity: .6 });
   for (const p of polys) {
     const geo = new THREE.ExtrudeGeometry(new THREE.Shape(p.map(([lo, la]) => new THREE.Vector2(lo + 86, la - 27))), { depth: .06, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
     scene.add(new THREE.Mesh(geo, landMat));
@@ -441,15 +447,15 @@ function makeMap() {
     const k = .5 + cr() * .5; cc.push(1 * k, .72 * k, .38 * k);
   }
   const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3)); cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
-  scene.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: .022, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  if (false) scene.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: .022, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
   // clouds + storm cells over S Florida
   const cl = [], r = rng(33);
-  const addCloud = (x, y, z, sc, op, storm) => { const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false, color: storm ? 0x6a7486 : 0x3a4352 }); const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .6, 1); s.userData = { op, storm, base: m.color.clone(), x }; scene.add(s); cl.push(s); };
-  for (let i = 0; i < 160; i++) { const p = ll(-100 + r() * 28, 22 + r() * 13, .55 + r() * .4); addCloud(p.x, p.y, p.z, 1.2 + r() * 2.5, .08 + r() * .06, false); }
-  for (let i = 0; i < 70; i++) { const p = ll(-81.2 + (r() - .5) * 2.2, 26.6 + (r() - .5) * 1.6, .5 + r() * 1.1); addCloud(p.x, p.y, p.z, .6 + r() * 1.1, .22 + r() * .12, true); }
+  const addCloud = (x, y, z, sc, op, storm) => { const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false, color: storm ? 0xe8ecf2 : 0xffffff }); const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .6, 1); s.userData = { op, storm, base: m.color.clone(), x }; scene.add(s); cl.push(s); };
+  for (let i = 0; i < 160; i++) { const p = ll(-100 + r() * 28, 22 + r() * 13, .35 + r() * .25); addCloud(p.x, p.y, p.z, .5 + r() * 1.1, .2 + r() * .15, false); }
+  for (let i = 0; i < 70; i++) { const p = ll(-81.2 + (r() - .5) * 2.2, 26.6 + (r() - .5) * 1.6, .5 + r() * 1.1); addCloud(p.x, p.y, p.z, .45 + r() * .8, .75 + r() * .2, true); }
   const curve = new THREE.CatmullRomCurve3([[-97.74, 30.27, .07], [-95.2, 29.7, .4], [-91, 28.6, .55], [-87, 27.4, .58], [-84, 26.7, .58], [-81.8, 26.15, .57], [-80.9, 26.4, .5], [-80.13, 26.62, .07]].map(([a, b, y]) => ll(a, b, y)), false, 'centripetal');
   const tube = new THREE.TubeGeometry(curve, 400, .018, 8, false);
-  const routeMat = new THREE.MeshBasicMaterial({ color: 0xffc070 }); const route = new THREE.Mesh(tube, routeMat); scene.add(route);
+  const routeMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a }); const route = new THREE.Mesh(tube, routeMat); scene.add(route);
   const routeGlow = new THREE.Mesh(new THREE.TubeGeometry(curve, 400, .06, 8, false), new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(routeGlow);
   const idxN = tube.index.count, idxG = routeGlow.geometry.index.count;
   const plan = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3([ll(-80.13, 26.62, .07), ll(-78.5, 26.1, .4), ll(-76.7, 25.47, .07)]).getPoints(80)), new THREE.LineDashedMaterial({ color: 0x9fb3cc, dashSize: .06, gapSize: .06, transparent: true, opacity: 0 }));
@@ -464,9 +470,9 @@ function makeMap() {
     rings.forEach((m, i) => { const ph = ((t * .45 + i / 3) % 1); const s = .05 + ph * .6; m.scale.set(s, s, s); m.material.opacity = (1 - ph) * (o.crash || 0); });
     // storm flicker
     const fr = rng(Math.floor(t * 12) + 99); const fl = fr() < .2 ? fr() : 0; const fc = ll(-81 + (fr() - .5) * 1.5, 26.6 + (fr() - .5), 0);
-    for (const s of cl) { const k = s.userData.storm ? 1 + fl * 6 * Math.exp(-((s.position.x - fc.x) ** 2 + (s.position.z - fc.z) ** 2) / .6) : 1; s.material.color.copy(s.userData.base).multiplyScalar(k); s.position.x = s.userData.x + t * .05; }
+    for (const s of cl) { const k = s.userData.storm ? 1 + fl * 1.5 * Math.exp(-((s.position.x - fc.x) ** 2 + (s.position.z - fc.z) ** 2) / .6) : 1; s.material.color.copy(s.userData.base).multiplyScalar(k); s.position.x = s.userData.x + t * .05; }
     cam.position.copy(o.camPos); cam.lookAt(o.camTarget); cam.fov = o.fov || 32; cam.updateProjectionMatrix();
-    draw(scene, cam, .8, .7);
+    draw(scene, cam, .35, .92);
   }
   return { scene, cam, ll, curve, update };
 }
@@ -477,14 +483,14 @@ function makeCB() {
   scene.fog = new THREE.Fog(new THREE.Color().setRGB(...PRESETS.cb.fog, THREE.SRGBColorSpace), 60, 220);
   scene.environment = envFor('cb');
   scene.add(new THREE.HemisphereLight(0xc6d6f0, 0x0b1420, 1.0));
-  const sun = new THREE.DirectionalLight(0xffc89a, 2.4); sun.position.set(-60, 8, 25); scene.add(sun);
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: 0x0a1626, roughness: .25, metalness: .7 })); sea.rotation.x = -Math.PI / 2; scene.add(sea);
+  const sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.set(-30, 60, 20); scene.add(sun);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: 0x1d5a86, roughness: .85, metalness: 0 })); sea.rotation.x = -Math.PI / 2; scene.add(sea);
   const r = rng(5), cl = [];
   const addC = (x, y, z, sc, op) => {
     const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false });
     const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .85, 1);
-    const h = clamp(y / 14); const warm = clamp((x < 0 ? .7 : .35) + h * .5);
-    const col = new THREE.Color().setRGB(lerp(.16, 1.0, h * warm), lerp(.18, .72, h * warm), lerp(.26, .58, h * warm), THREE.SRGBColorSpace);
+    const h = clamp(y / 14); const lit = clamp(.18 + h * .75 + (x < 0 ? .06 : 0) + (z > 0 ? .06 : -.04));
+    const col = new THREE.Color().setRGB(lerp(.42, 1.0, lit), lerp(.45, 1.0, lit), lerp(.5, 1.0, lit), THREE.SRGBColorSpace);
     s.userData = { h: y, col, op }; scene.add(s); cl.push(s);
   };
   for (let i = 0; i < 300; i++) { const h = 1 + r() * 10.5, rad = 2.4 + .7 * Math.sin(h * 1.3) + h * .1, a = r() * 6.283, d = Math.sqrt(r()) * rad; addC(Math.cos(a) * d, h, Math.sin(a) * d, 2.6 + r() * 3, .55); }
@@ -515,7 +521,7 @@ function makeCB() {
       const vis = ss(s.userData.h - .8, s.userData.h + .2, grow * 14.5);
       s.material.opacity = s.userData.op * vis * (s.userData.h > 2.6 || Math.hypot(s.position.x, s.position.z) < 8 ? (o.cloudK ?? 1) : 1);
       const d2 = s.position.distanceToSquared(fc);
-      s.material.color.copy(s.userData.col).multiplyScalar(1 + F * (4 * Math.exp(-d2 / 14) + .4));
+      s.material.color.copy(s.userData.col).multiplyScalar(1 + F * (1.2 * Math.exp(-d2 / 14) + .15));
     }
     const pk = o.parts || 0;
     for (let i = 0; i < NP; i++) {
@@ -733,7 +739,7 @@ const SCENES = {
         jetOff: [0, -fa * 55, 0], cam: { dist: lerp(28, 22, dv) + fa * 25, az: lerp(2.55, 3.35, seg(lt, s(2), s(4))), el: lerp(.1, .45, dv), fov: 42, target: [0, -fa * 12, 0], roll: lerp(0, .12, dv) } };
     } else { o = { ...o, hideJet: true, speed: 60, turb: .2, dark: .7, cam: { dist: 70, az: 3.0 + (lt - s(4)) * .02, el: -.22, fov: 38, target: [0, 0, 0] } }; }
     storm.update(t, o);
-    post(t);
+    post(t, { right: win(lt, s(2), s(4) + .3) });
     if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .12})`; g.fillRect(0, 0, W, H); }
     // 35,000
     const a0 = win(lt, s(0) + .1, s(1) + .2, .8, .5);
@@ -779,7 +785,7 @@ const SCENES = {
     post(t);
     const lab = (n, lo, la, a, c, dx = 18, dy = -18, sz = 20) => { const [x, y, z] = proj(ll(lo, la, .1), map.cam); if (z > 1 || a <= 0) return; T(n, x + dx, y + dy, { s: sz, w: 600, ls: 5, c, a }); };
     lab('AUSTIN', -97.74, 30.27, win(lt, .4, s(0) + 4), 'rgba(255,255,255,.85)');
-    lab('GULF OF MEXICO', -90.5, 26.2, win(lt, 1, s(1) + 1) * .7, 'rgba(111,216,255,.6)', 0, 0, 22);
+    lab('GULF OF MEXICO', -90.5, 26.2, win(lt, 1, s(1) + 1) * .7, 'rgba(255,255,255,.85)', 0, 0, 22);
     lab('FLORIDA', -81.4, 28.2, win(lt, s(0) + 3, sc.dur + 1) * .6, 'rgba(255,255,255,.6)');
     lab('BAHAMAS', -77.4, 25.9, win(lt, s(0) + 4, s(2)) * .6, 'rgba(255,255,255,.55)');
     lab('GREENACRES', -80.13, 26.62, win(lt, s(1) + 2.2, sc.dur + 1), RED, 26, 10, 24);
@@ -808,7 +814,7 @@ const SCENES = {
       N('55', '55', 'CAPTAIN', win(lt, s(6) + .1, s(7) + .2), -34, 7),
       N('20b', '20', 'FIRST OFFICER', win(lt, s(6) + .6, s(7) + .2), 34, 7, '#FFB547'),
     ];
-    const res = sky.update(t, { mode: 'gold', speed: 85, cam, texts });
+    const res = sky.update(t, { mode: 'day', speed: 85, cam, texts });
     flare(res.sunWorld, sky.cam, .9);
     post(t);
     T('FAA MINIMUM AGES', 150, 830, { s: 22, w: 600, ls: 7, c: AMBER, a: win(lt, s(1) + .2, s(6)) });
@@ -839,10 +845,9 @@ const SCENES = {
       const c = lerpShot(camA, camB, eio(seg(lt, sw1, sw2)));
       cb.update(t, lt, { grow, flash: fl, cloudK: 1 - .7 * xr, parts: xr, phase: lt > s(3), planes: ss(s(3), s(3) + 1, lt), flLine: ss(sw1 + 1, sw1 + 2.5, lt), jetX: lerp(-30, -3, seg(lt, sw1 + .5, sw2)), cam: c });
       post(t);
-      if (fl.f) { g.fillStyle = `rgba(255,230,210,${fl.f * .06})`; g.fillRect(0, 0, W, H); }
       callout(V3(lerp(-30, -3, seg(lt, sw1 + .5, sw2)), 10.7, 0), cb.cam, -120, -90, 'N722BD', 'FL350  ·  10.7 km', win(lt, sw1 + 1.5, s(2) + .5));
-      callout(V3(.5, 6.5, 0), cb.cam, 220, -60, 'UPDRAFT', 'over 30 m/s  ·  67 mph, straight up', win(lt, s(2) + .4, s(4) + .1), CYAN);
-      callout(V3(9, 4.6, 12), cb.cam, 160, 60, '0 °C  FREEZING LEVEL', '≈ 15,000 ft', win(lt, s(3) + .5, s(4) + .1), CYAN);
+      callout(V3(.5, 6.5, 0), cb.cam, 220, -60, 'UPDRAFT', 'over 30 m/s  ·  67 mph, straight up', win(lt, s(2) + .4, s(4) + .1), '#fff');
+      callout(V3(9, 4.6, 12), cb.cam, 160, 60, '0 °C  FREEZING LEVEL', '≈ 15,000 ft', win(lt, s(3) + .5, s(4) + .1), '#fff');
       callout(V3(-8, 10, 12), cb.cam, -140, -40, '−40 °C', '≈ 33,000 ft', win(lt, s(3) + 1.2, s(4) + .1), '#fff');
       const sa = win(lt, s(4), sw2 + .3, .3, .3);
       T('SUPERCOOLED', W / 2, 560, { s: 110, w: 200, ls: lerp(10, 26, seg(lt, s(4), sw2)), al: 'center', c: ICE, a: sa, glow: 30, glowC: CYAN });
@@ -921,11 +926,11 @@ const SCENES = {
     let cam;
     if (lt < s(3) - .05) { const u = seg(lt, 0, s(3)); cam = { dist: lerp(60, 52, u), az: lerp(.35, .5, u), el: .04, fov: 30, lookOff: [0, 2, 0] }; }
     else { const u = seg(lt, s(3), sc.dur); cam = { dist: lerp(150, 135, u), az: lerp(.62, .72, u), el: lerp(.22, .26, u), fov: 30, lookOff: [0, -2, 0], shiftY: 40 }; }
-    const res = sky.update(t, { mode: 'dusk', speed: 90, jetX, cam, walls: walls * .9, wallS, wallM, wallSFlash: near && lt > s(7), roll: gust * .004, shake: lt > s(7) ? .3 : 0,
+    const res = sky.update(t, { mode: 'day', speed: 90, jetX, cam, walls: walls * .9, wallS, wallM, wallSFlash: near && lt > s(7), roll: gust * .004, shake: lt > s(7) ? .3 : 0,
       texts: [{ id: 'wS', a: walls, world: [wallS, 31, 0], make: () => textPlane((x, pw, ph) => { x.textAlign = 'center'; x.font = '300 150px Inter'; x.letterSpacing = '30px'; x.fillStyle = '#ff6a72'; x.fillText('STALL', pw / 2, 600); }, 30, 15) },
               { id: 'wM', a: walls, world: [wallM, 31, 0], make: () => textPlane((x, pw, ph) => { x.textAlign = 'center'; x.font = '300 150px Inter'; x.letterSpacing = '30px'; x.fillStyle = '#ffc56a'; x.fillText('MACH', pw / 2, 600); }, 30, 15) }] });
     flare(res.sunWorld, sky.cam, .7);
-    post(t);
+    post(t, { side: 1 });
     const z = isa(35000);
     const facts = [['AIR DENSITY', Math.round(z.sig * 100) + '%', 'of sea level', s(1)], ['TEMPERATURE', '−' + Math.abs(Math.round(z.T - 273.15)) + ' °C', 'standard atmosphere', s(1) + 2], ['SPEED OF SOUND', Math.round(z.a / .44704) + ' mph', 'vs 761 at sea level', s(2)]];
     facts.forEach(([lb, v, sub, ts], i) => { const a = win(lt, ts + .2, s(3) + .1); const y = 330 + i * 190; T(lb, 150, y, { s: 18, w: 600, ls: 6, c: AMBER, a }); T(v, 150, y + 92, { s: 96, w: 200, a }); T(sub, 150, y + 128, { s: 20, w: 300, c: 'rgba(255,255,255,.75)', a }); });
@@ -1024,7 +1029,7 @@ const SCENES = {
     const A = s(3) - .05, B = s(7) - .05;
     if (lt < A) {
       const u = seg(lt, 0, A);
-      const res = sky.update(t, { mode: 'dusk', speed: 60, hideJet: false, cam: { dist: lerp(110, 90, u), az: 2.25 + u * .12, el: .03, fov: 26, lookOff: [0, 6, 0] } });
+      const res = sky.update(t, { mode: 'day', speed: 60, hideJet: false, cam: { dist: lerp(110, 90, u), az: 2.25 + u * .12, el: .03, fov: 26, lookOff: [0, 6, 0] } });
       flare(res.sunWorld, sky.cam, .6); post(t);
       T('HYPOTHESES, NOT CONCLUSIONS', W / 2, 330, { s: 30, w: 400, ls: 16, al: 'center', a: win(lt, s(0) + .1, A + .2) });
       const items = [['PRELIMINARY REPORT', 'expected within weeks', s(1) + 2.5], ['PROBABLE CAUSE', 'typically 12 to 24 months', s(2) + .1]];
