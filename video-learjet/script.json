@@ -1,46 +1,54 @@
 {
-  "title": "60 segundos de queda: a física do acidente do Learjet na Flórida",
-  "language": "pt-PT",
+  "title": "Sixty Seconds: The Physics of the Florida Learjet Crash",
+  "language": "en",
   "scenes": [
     {
       "id": "hook",
-      "chapter": "01 · A QUEDA",
-      "text": "Trinta e cinco mil pés. Pouco mais de um minuto depois: oito mil setecentos e cinquenta. Foi esta a queda registada pelo Learjet 60 que se despenhou na Flórida, no dia um de novembro. Hoje vamos perceber a física por trás desses sessenta segundos."
+      "chapter": "",
+      "numeral": "",
+      "text": "Thirty-five thousand feet. Inside a growing thunderstorm, over southern Florida. A little over a minute later, radar shows this jet at eight thousand seven hundred and fifty feet. Falling faster than thirty thousand feet per minute. This is the physics of those sixty seconds."
     },
     {
       "id": "facts",
-      "chapter": "02 · O QUE SABEMOS",
-      "text": "O jato, com a matrícula N722BD, tinha descolado de Austin, no Texas, com destino a North Eleuthera, nas Bahamas. Por volta do meio-dia e quarenta e nove, hora local, caiu numa zona residencial de Greenacres, no condado de Palm Beach. Morreram as nove pessoas a bordo, incluindo uma família do Texas com duas crianças. E a copiloto: Nathalia Gadelha Filgueiras, de apenas vinte anos."
+      "chapter": "Flight N722BD",
+      "numeral": "I",
+      "text": "On November first, a Learjet 60, registration N722BD, left Austin, Texas, bound for North Eleuthera in the Bahamas. Just before one in the afternoon, it came down in a residential neighborhood in Greenacres, Palm Beach County. All nine people on board were killed, among them a Texas family with two young children. In the right seat was the co-pilot, Nathalia Gadelha Filgueiras. She was twenty years old."
     },
     {
       "id": "age",
-      "chapter": "03 · UMA COPILOTO DE 20 ANOS?",
-      "text": "Como é que uma piloto de vinte anos estava no cockpit de um jato executivo? Nos Estados Unidos, é perfeitamente legal. A licença de piloto privado pode obter-se aos dezassete anos, e foi o que ela fez, ainda no secundário. A licença comercial, aos dezoito. Com a qualificação para aquele modelo de avião, pode voar como segunda piloto. Só a licença de piloto de linha aérea exige vinte e três anos. Ao lado dela estava um comandante de cinquenta e cinco anos. A idade, por si só, não explica um acidente. Mas a física ajuda a perceber o que pode ter acontecido."
+      "chapter": "The Right Seat",
+      "numeral": "II",
+      "text": "Twenty sounds young for a jet cockpit. But in the United States, it is entirely legal. She earned her private pilot license at seventeen, while still in high school. A commercial license is possible at eighteen. With a type rating for the specific aircraft, a pilot can serve as second in command. Only the airline transport certificate requires twenty-three. Beside her sat a fifty-five-year-old captain. Age alone does not explain an accident. Physics might."
     },
     {
       "id": "storm",
-      "chapter": "04 · DENTRO DA TROVOADA",
-      "text": "Minutos antes, a tripulação reportou gelo leve e transparente, turbulência moderada e desvios de altitude de cerca de setecentos pés. O radar meteorológico sugere que o avião entrou numa célula de trovoada em rápido crescimento. Dentro de um cumulonimbo, as correntes ascendentes podem ultrapassar os trinta metros por segundo. Levam gotas de água muito acima do nível de congelação, onde ficam em sobrefusão: líquidas, mas abaixo de zero graus. Quando batem na asa, congelam no instante."
+      "chapter": "Into the Storm",
+      "numeral": "III",
+      "text": "At around twelve forty-seven, the crew told controllers they were picking up light clear ice, moderate turbulence, and altitude swings of about seven hundred feet. Weather radar suggests the jet had flown into a rapidly building thunderstorm cell. Inside a cumulonimbus, updrafts can exceed thirty meters per second. They loft water droplets miles above the freezing level, where they stay liquid far below zero. Supercooled. The moment they hit a wing, they freeze."
     },
     {
       "id": "ice",
-      "chapter": "05 · GELO NA ASA",
-      "text": "E aqui entra a aerodinâmica. A sustentação é igual a meio, vezes a densidade do ar, vezes a velocidade ao quadrado, vezes a área da asa, vezes o coeficiente de sustentação. Esse coeficiente depende da forma da asa. Uma camada fina de gelo no bordo de ataque destrói o escoamento suave do ar. O coeficiente máximo pode cair mais de trinta por cento, e a asa entra em perda a um ângulo menor."
+      "chapter": "Ice",
+      "numeral": "IV",
+      "text": "Here is why that matters. Lift equals one half, times air density, times velocity squared, times wing area, times the lift coefficient. That coefficient depends on the exact shape of the wing. A thin ridge of ice on the leading edge trips the smooth airflow. Maximum lift can drop by more than thirty percent, and the wing stalls at a lower angle of attack."
     },
     {
       "id": "coffin",
-      "chapter": "06 · O CANTO DO CAIXÃO",
-      "text": "A trinta e cinco mil pés, o ar tem menos de um terço da densidade ao nível do mar, e a velocidade do som é mais baixa, porque o ar é mais frio. Por isso, a velocidade de perda sobe e o limite de Mach desce. Entre os dois, a margem estreita. Os pilotos chamam-lhe o canto do caixão. Junte-se gelo, que empurra a perda para cima, e rajadas de turbulência, e essa margem pode desaparecer em segundos."
+      "chapter": "The Coffin Corner",
+      "numeral": "V",
+      "text": "Now add altitude. At thirty-five thousand feet, the air has less than a third of its sea-level density. And because it is colder, the speed of sound is lower too. So the stall speed rises, while the maximum speed, set by Mach, falls. Between those two walls, the safe band narrows. Pilots call the point where they meet the coffin corner. Ice pushes the stall wall forward. Turbulence throws the aircraft back and forth. And the margin can vanish in seconds."
     },
     {
       "id": "dive",
-      "chapter": "07 · OVERSPEED",
-      "text": "A tripulação pediu para subir para trinta e sete mil pés. Pouco depois, reportou excesso de velocidade e uma descida rápida. Os dados de voo mostram uma razão de descida superior a trinta e dois mil pés por minuto. São mais de cento e sessenta metros por segundo, quase seiscentos quilómetros por hora, só na vertical. Perto da velocidade do som, formam-se ondas de choque sobre a asa. O centro de pressão recua e o nariz tende a baixar ainda mais: é o chamado Mach tuck. E como as forças aerodinâmicas crescem com o quadrado da velocidade, a estrutura pode ultrapassar os limites para que foi projetada. O NTSB diz existirem indícios de que o avião se desintegrou ainda no ar."
+      "chapter": "Overspeed",
+      "numeral": "VI",
+      "text": "The crew asked to climb to thirty-seven thousand feet. Moments later, they reported an overspeed and a rapid descent. Flight data shows the jet descending at more than thirty-two thousand feet per minute. That is over one hundred and sixty meters per second, more than three hundred and sixty miles per hour, straight down. Near the speed of sound, shock waves form on top of the wing. The center of lift shifts backward, and the nose wants to pitch down even further. It is called Mach tuck. And because aerodynamic loads grow with the square of speed, the structure can be pushed past its design limits. The NTSB says there is evidence the aircraft broke apart in flight."
     },
     {
       "id": "outro",
-      "chapter": "08 · O QUE FALTA SABER",
-      "text": "Atenção: nada disto é ainda uma conclusão. O NTSB está a recolher destroços e dados, e o relatório preliminar deverá surgir dentro de semanas. A causa provável pode demorar mais de um ano. Mas a lição é antiga na aviação: as trovoadas contornam-se, a mais de vinte milhas náuticas. Porque lá dentro, a física não negoceia. Em memória das nove vidas perdidas."
+      "chapter": "What We Don't Know",
+      "numeral": "VII",
+      "text": "None of this is a conclusion yet. The NTSB is still recovering wreckage and data, and a preliminary report is expected within weeks. The probable cause may take more than a year. But the lesson is an old one in aviation. You don't fly through a thunderstorm. You go around it, by twenty nautical miles or more. Because inside, physics doesn't negotiate. In memory of the nine lives lost."
     }
   ]
 }

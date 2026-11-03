@@ -11,7 +11,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const FPS = +arg('fps', 30);
+const FPS = +arg('fps', 24);
 const OUT = path.resolve(ROOT, arg('out', 'out/video_silent.mp4'));
 const STILLS = arg('stills', null);
 
