@@ -56,4 +56,4 @@ python3 mux.py --burn             # → out/final.mp4
 - `index.html`: todas as cenas (Three.js + overlay canvas 2D). Abre-se com `window.renderFrame(t)`.
 - `render.mjs` / `render_all.sh`: renderização determinística frame a frame → H.264 1080p30.
 - `mux.py`: design sonoro gerado por código (drone, vento, chuva, trovões sincronizados com os relâmpagos), ducking sob a voz, loudnorm −14 LUFS e legendas SRT a partir do alinhamento por carácter do ElevenLabs.
-- `out/video_sem_voz.mp4`: vídeo final com som ambiente, pronto para receber a voz.
+- `out/video_sem_voz_web.mp4`: vídeo final com som ambiente, comprimido (< 100 MB) para o GitHub e pronto para receber a voz. A versão de qualidade máxima (`out/video_sem_voz.mp4`, ~670 MB) gera-se localmente com `./render_all.sh && python3 mux.py`.
