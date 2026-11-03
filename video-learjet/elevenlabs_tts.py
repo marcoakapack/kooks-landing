@@ -22,6 +22,7 @@ for envf in (".env.local", ".env"):
 API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a documentary narrator voice
 MODEL_ID = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+FORMAT = os.environ.get("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")  # 128 kbps works on every plan; 192 needs Creator+
 SETTINGS = {"stability": 0.55, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": True, "speed": 1.0}
 
 if not API_KEY:
@@ -33,7 +34,7 @@ SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 
 def tts(text, prev_text, next_text):
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/with-timestamps?output_format=mp3_44100_192"
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/with-timestamps?output_format={FORMAT}"
     body = {"text": text, "model_id": MODEL_ID, "voice_settings": SETTINGS}
     if prev_text: body["previous_text"] = prev_text
     if next_text: body["next_text"] = next_text
