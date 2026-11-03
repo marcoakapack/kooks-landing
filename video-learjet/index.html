@@ -752,7 +752,7 @@ function setup(timings) {
     else { let c = 0; sents.forEach(x => { st.push(LEAD + c / CPS); c += x.length + 1; }); speech = s.text.length / CPS; }
     const lead = s.id === 'hook' ? LEAD : LEAD + 1.3;            // short chapter card before the voice
     st = st.map(v => v - LEAD + lead);
-    const tail = s.id === 'outro' ? 12 : TAIL, dur = lead + speech + tail;
+    const tail = s.id === 'outro' ? 8 : TAIL, dur = lead + speech + tail;
     const S = k => st[clamp(k, 0, st.length - 1)], E = k => k + 1 < st.length ? st[k + 1] : lead + speech;
     // word timings: real (ElevenLabs alignment) or estimated inside each sentence
     const toks = s.text.split(/\s+/); let words = [];
@@ -988,51 +988,17 @@ const SCENES = {
       lowerThird('NINE ON BOARD', 'No survivors  ·  ~600 residents displaced', win(lt, c2 + .2, c3 + .2, .5, .2));
       return { cuts };
     }
-    // the right seat
+    // bridge to the physics: the jet at cruise, flight-data card
     const u = seg(lt, c3, sc.dur);
-    const res = sky.update(t, { mode: 'day', speed: 110, cam: { dist: lerp(20, 13, eio(u)), az: lerp(1.25, 1.5, u), el: .05, fov: 30, lookOff: [lerp(1, 4.5, eio(u)), .6, 0] } });
-    flare(res.sunWorld, sky.cam, .7); post(t);
-    sky.jet.group.updateMatrixWorld(true);
-    callout(sky.jet.group.localToWorld(V3(5.05, .55, .5)), sky.cam, 160, -170, 'RIGHT SEAT', 'Co-pilot  ·  second in command', win(lt, c3 + .4, sc.dur + 1, .4, .1), AMBER);
-    lowerThird('NATHALIA GADELHA FILGUEIRAS', 'Co-pilot  ·  20 years old', win(lt, c3 + .3, sc.dur + 1, .5, .1));
-    const na = win(lt, s(4) - .05, sc.dur + 1, .2, .1);
-    KT('20', W - 330, 700, { s: 260, w: 200, ls: -4, c: AMBER, a: na, dy: 80, glow: 30, glowC: AMBER }, s(4) - .05, lt);
-    T('YEARS OLD', W - 330 + 10, 760, { s: 26, w: 700, ls: 8, a: na * ss(s(4) + .3, s(4) + .7, lt) });
+    const res = sky.update(t, { mode: 'day', speed: 140, cam: { dist: lerp(26, 16, eio(u)), az: lerp(1.1, 1.55, u), el: lerp(.02, .09, u), fov: 30, lookOff: [lerp(-2, 3, eio(u)), .6, 0] } });
+    flare(res.sunWorld, sky.cam, .7); post(t, { right: 1 });
+    lowerThird('NTSB INVESTIGATION', 'Probable cause not yet determined', win(lt, c3 + .2, s(4) + .4, .5, .3));
+    const da = win(lt, s(4) - .1, sc.dur + 1, .3, .1), X = W - 150;
+    const rows = [['CRUISE ALTITUDE', '35,250 FT', '#fff'], ['ALTITUDE ≈ 63 s LATER', '8,750 FT', '#fff'], ['DESCENT RATE', '> 32,000 FT/MIN', RED]];
+    rows.forEach(([l, v, c], i) => { const k = ss(s(4) + i * .35, s(4) + i * .35 + .5, lt) * da; const y = 330 + i * 150;
+      T(l, X, y, { s: 18, w: 700, ls: 6, al: 'right', c: AMBER, a: k }); T(v, X + (1 - eout(k)) * 40, y + 66, { s: 64, w: 300, al: 'right', c, a: k, glow: c === RED ? 16 : 0, glowC: RED }); });
+    T('FAA · Flightradar24 · NTSB', X, 790, { s: 16, w: 400, ls: 2, al: 'right', c: 'rgba(255,255,255,.6)', a: da * ss(s(4) + 1.2, s(4) + 1.8, lt) });
     return { cuts };
-  },
-
-  /* ---------- II. THE RIGHT SEAT (golden hour) ---------- */
-  age(lt, sc, t) {
-    const s = sc.S;
-    let cam;
-    if (lt < s(2) - .05) cam = { dist: 34 - lt * .3, az: .62 + lt * .012, el: -.07, fov: 30, lookOff: [0, 1.5, 0] };
-    else if (lt < s(6) - .05) {
-      const k = lt < s(3) ? 0 : lt < s(4) ? 1 : lt < s(5) ? 2 : 3, A0 = [s(2), s(3), s(4), s(5)][k], A1 = [s(3), s(4), s(5), s(6)][k], u = seg(lt, A0, A1);
-      cam = [{ dist: lerp(50, 44, u), az: lerp(2.55, 2.35, u), el: .1, fov: 30, lookOff: [0, 2, 0] }, { dist: lerp(24, 20, u), az: lerp(.25, .45, u), el: .12, fov: 34, lookOff: [2, 1, 0] },
-        { dist: lerp(62, 52, u), az: lerp(3.6, 3.35, u), el: -.04, fov: 28, lookOff: [0, 3, 0] }, { dist: lerp(36, 30, u), az: lerp(1.25, 1.5, u), el: .22, fov: 32, lookOff: [0, 1, 0] }][k];
-    }
-    else if (lt < s(7) - .05) { const u = seg(lt, s(6), s(7)); cam = { dist: lerp(30, 26, u), az: lerp(.95, 1.05, u), el: .05, fov: 30, lookOff: [0, 2, 0] }; }
-    else { const u = seg(lt, s(7), sc.dur); cam = { dist: lerp(80, 120, u), az: 1.7 + u * .1, el: .12, fov: 28, lookOff: [0, 5, 0] }; }
-    const N = (id, num, lab, a, x = -30, y = 4, col) => ({ id, a, x, y, depth: 50, make: () => numberPlane(num, lab, col) });
-    const texts = [
-      N('20', '20', 'YEARS OLD', win(lt, s(0) + .2, s(2) - .1), -30, 6),
-      N('17', '17', 'PRIVATE PILOT', win(lt, s(2) + .1, s(3) + .05), -32, 6),
-      N('18', '18', 'COMMERCIAL PILOT', win(lt, s(3) + .1, s(4) + .05), -32, 6),
-      N('sic', 'SIC', 'TYPE RATING', win(lt, s(4) + .1, s(5) + .05), -32, 6, '#FFB547'),
-      N('23', '23', 'AIRLINE TRANSPORT', win(lt, s(5) + .1, s(6)), -32, 6),
-      N('55', '55', 'CAPTAIN', win(lt, s(6) + .1, s(7) + .2), -34, 7),
-      N('20b', '20', 'FIRST OFFICER', win(lt, s(6) + .6, s(7) + .2), 34, 7, '#FFB547'),
-    ];
-    const res = sky.update(t, { mode: 'day', speed: 85, cam, texts });
-    flare(res.sunWorld, sky.cam, .9);
-    post(t);
-    T('FAA MINIMUM AGES', 150, 250, { s: 22, w: 600, ls: 7, c: AMBER, a: win(lt, s(1) + .2, s(6)) });
-    T('Second in command requires a type rating for the specific aircraft', 150, 292, { s: 22, w: 300, c: 'rgba(255,255,255,.8)', a: win(lt, s(4) + .3, s(5)) });
-    const qa = win(lt, s(7) + .1, sc.dur + 1, .9, .1);
-    g.fillStyle = `rgba(0,0,0,${.35 * qa})`; g.fillRect(0, 0, W, H);
-    KT('Age alone does not explain an accident.', W / 2, 530, { s: 62, w: 300, ls: 1, al: 'center', a: qa, stg: .018 }, s(7), lt);
-    KT('PHYSICS MIGHT.', W / 2, 640, { s: 64, w: 800, ls: 16, al: 'center', c: AMBER, a: qa, stg: .05, glow: 26, glowC: AMBER }, s(8) - .05, lt);
-    return { cuts: [s(2), s(3), s(4), s(5), s(6), s(7)], capOff: lt > s(7) - .05 };
   },
 
   /* ---------- III. INTO THE STORM ---------- */
@@ -1269,13 +1235,9 @@ const SCENES = {
     for (let i = 0; i < 9; i++) { const k = a * ss(B + .5 + i * .22, B + 1.4 + i * .22, lt); const rise = (lt - B) * 6; const x = W / 2 + (i - 4) * 96, y = 520 - rise * (.6 + (i % 3) * .15); const f2 = 1 + .08 * Math.sin(lt * 7 + i * 2.1);
       const rg = g.createRadialGradient(x, y, 0, x, y, 48 * f2); rg.addColorStop(0, `rgba(255,220,150,${.95 * k})`); rg.addColorStop(.22, `rgba(255,170,70,${.45 * k})`); rg.addColorStop(1, 'rgba(255,150,50,0)'); g.fillStyle = rg; g.beginPath(); g.arc(x, y, 50, 0, 7); g.fill(); }
     T('IN MEMORY', W / 2, 360, { s: 24, w: 600, ls: 16, al: 'center', c: AMBER, a });
-    const a1 = a * (1 - ss(B + 5, B + 5.8, lt)), a2 = a * ss(B + 5.8, B + 7, lt);
-    T('of the nine lives lost', W / 2, 700, { s: 56, w: 200, ls: 1, al: 'center', a: a1 });
-    T('Greenacres, Florida  ·  November 1, 2026', W / 2, 760, { s: 22, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.65)', a: a1 });
-    const rows = [['Jeff Gregory, 55', 'Nathalia Gadelha Filgueiras, 20'], ['Adam Robinson', 'Helen Robinson', 'Emma, 4', 'Charlie, 2'], ['Anita Maria Cetina', 'Rachael Reed', 'Charmi Fehr']];
-    rows.forEach((r, i) => T(r.join('     ·     '), W / 2, 660 + i * 62, { s: 32, w: 200, ls: 1.5, al: 'center', a: a2 * ss(B + 5.8 + i * .5, B + 6.8 + i * .5, lt) }));
-    T('Greenacres, Florida  ·  November 1, 2026', W / 2, 870, { s: 20, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.6)', a: a2 * ss(B + 7.5, B + 8.5, lt) });
-    T('Sources: NTSB · FAA · Flightradar24 · LiveATC · CNN · CBS12 · NBC Miami · WPTV', W / 2, 920, { s: 16, w: 300, ls: 1, al: 'center', c: 'rgba(255,255,255,.45)', a: a * ss(B + 9, B + 10, lt) });
+    KT('of the nine lives lost', W / 2, 700, { s: 56, w: 200, ls: 1, al: 'center', a, stg: .03, dy: 20 }, B + 1, lt);
+    T('Greenacres, Florida  ·  November 1, 2026', W / 2, 760, { s: 22, w: 300, ls: 3, al: 'center', c: 'rgba(255,255,255,.65)', a: a * ss(B + 2, B + 3, lt) });
+    T('Sources: NTSB · FAA · Flightradar24 · LiveATC · CNN · CBS12 · NBC Miami · WPTV', W / 2, 860, { s: 16, w: 300, ls: 1, al: 'center', c: 'rgba(255,255,255,.45)', a: a * ss(B + 3.5, B + 4.5, lt) });
     post(t);
     return { cuts: [], fadeOut: 2.5, capOff: true };
   },

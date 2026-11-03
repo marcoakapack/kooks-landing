@@ -18,18 +18,23 @@ Vídeo explicativo em inglês para um canal de YouTube de ciência e física, co
 
 A causa provável não está determinada. O vídeo apresenta hipóteses físicas compatíveis com os dados públicos e di-lo explicitamente.
 
-## Estrutura (≈ 4 min 27 s)
+## Estrutura (≈ 3 min 45 s)
 
-Em todos os capítulos há legendas cinéticas: cada palavra aparece quando é dita, e números, perigo, gelo e física têm cores próprias. Os cortes são whip-pans, a câmara faz punch-in nas palavras-chave e treme com os relâmpagos. Os títulos aparecem letra a letra.
+O canal é de ciência e não de notícias. O acidente é o ponto de partida e o vídeo explica a física, sem nomes nem pormenores pessoais.
 
-0. **Cold open** (de dia): o jato passa a FL350 em céu limpo, o cumulonimbo surge à frente, o avião entra na célula e mergulha com o contador de altitude 35,000 → 8,750 ft. Título *SIXTY SECONDS* sobre as nuvens iluminadas pelo sol.
-1. **Flight N722BD**: rota Austin → Golfo do México e descida do mapa regional até ao nível da rua em Greenacres. O local fica na Military Trail junto à 10th Ave N, a ~7 km da praia, com a I-95, a Lake Worth Lagoon e o aeroporto PBI. Mostra a cratera na estrada e o lugar da direita no cockpit.
-2. **The Right Seat**: idades mínimas da FAA (17 · 18 · SIC · 23), com um ângulo de câmara por frase.
-3. **Into the Storm**: tráfego rádio, cumulonimbo em raio-X filmado de quatro ângulos e congelamento instantâneo no bordo de ataque.
-4. **Ice**: escoamento potencial exato num perfil de Joukowski, gelo em "cornos", separação e curva CL–α.
-5. **The Coffin Corner**: "paredes" de perda e de Mach que se fecham à volta do jato (atmosfera ISA).
-6. **Overspeed**: mergulho, onda de choque, Mach tuck, carga ∝ v² e conclusão preliminar do NTSB.
-7. **What We Don't Know**: prazos do NTSB, contorno de 20 NM e memória das nove vítimas.
+Em todos os capítulos há legendas cinéticas: cada palavra aparece quando é dita, e números, perigo, gelo e física têm cores próprias. Os cortes são whip-pans, a câmara faz punch-in nas palavras-chave e os títulos aparecem letra a letra.
+
+0. **Cold open** (de dia): o jato a FL350, o cumulonimbo à frente, a entrada na célula e o mergulho de 35,000 → 8,750 ft. Título *SIXTY SECONDS*.
+1. **Flight N722BD**: a rota e a descida do mapa até ao nível da rua em Greenacres (Military Trail / 10th Ave N, ~7 km da praia). Termina com os dados de voo e a frase-ponte "it is a story about physics".
+2. **Into the Storm**: cumulonimbo em raio-X (correntes ascendentes, nível de congelação, água em sobrefusão) e congelamento no bordo de ataque.
+3. **Ice**: escoamento potencial num perfil de Joukowski, gelo, separação e curva CL–α.
+4. **The Coffin Corner**: as "paredes" de perda e de Mach (atmosfera ISA).
+5. **Overspeed**: mergulho, onda de choque, Mach tuck, carga ∝ v² e nota preliminar do NTSB.
+6. **What We Don't Know**: prazos do NTSB, contorno de 20 NM e homenagem genérica às nove vítimas.
+
+## Voz gerada no site do ElevenLabs (sem API)
+
+Põe os MP3 em `audio/scene_00_hook.mp3` … `audio/scene_06_outro.mp3` e corre `python3 align_audio.py`. O script deteta as pausas do áudio e escreve `audio/timings.json`, com o tempo de cada palavra (erro típico ≈ 0,07 s). Depois segue a opção B em baixo.
 
 ## Gerar a voz com o ElevenLabs (no teu computador)
 

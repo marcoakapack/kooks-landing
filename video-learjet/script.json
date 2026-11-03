@@ -12,42 +12,36 @@
       "id": "facts",
       "chapter": "Flight N722BD",
       "numeral": "I",
-      "text": "On November first, a Learjet 60, registration N722BD, left Austin, Texas, bound for North Eleuthera in the Bahamas. Just before one in the afternoon, it came down in a residential neighborhood in Greenacres, Palm Beach County. All nine people on board were killed, among them a Texas family with two young children. In the right seat was the co-pilot, Nathalia Gadelha Filgueiras. She was twenty years old."
-    },
-    {
-      "id": "age",
-      "chapter": "The Right Seat",
-      "numeral": "II",
-      "text": "Twenty sounds young for a jet cockpit. But in the United States, it is entirely legal. She earned her private pilot license at seventeen, while still in high school. A commercial license is possible at eighteen. With a type rating for the specific aircraft, a pilot can serve as second in command. Only the airline transport certificate requires twenty-three. Beside her sat a fifty-five-year-old captain. Age alone does not explain an accident. Physics might."
+      "text": "On November first, a Learjet 60 business jet left Austin, Texas, bound for North Eleuthera in the Bahamas. Just before one in the afternoon, it came down in a residential neighborhood in Greenacres, Palm Beach County. All nine people on board were killed. The official cause has not been determined. But the flight data already tells a story, and it is a story about physics."
     },
     {
       "id": "storm",
       "chapter": "Into the Storm",
-      "numeral": "III",
+      "numeral": "II",
       "text": "At around twelve forty-seven, the crew told controllers they were picking up light clear ice, moderate turbulence, and altitude swings of about seven hundred feet. Weather radar suggests the jet had flown into a rapidly building thunderstorm cell. Inside a cumulonimbus, updrafts can exceed thirty meters per second. They loft water droplets miles above the freezing level, where they stay liquid far below zero. Supercooled. The moment they hit a wing, they freeze."
     },
     {
       "id": "ice",
       "chapter": "Ice",
-      "numeral": "IV",
+      "numeral": "III",
       "text": "Here is why that matters. Lift equals one half, times air density, times velocity squared, times wing area, times the lift coefficient. That coefficient depends on the exact shape of the wing. A thin ridge of ice on the leading edge trips the smooth airflow. Maximum lift can drop by more than thirty percent, and the wing stalls at a lower angle of attack."
     },
     {
       "id": "coffin",
       "chapter": "The Coffin Corner",
-      "numeral": "V",
+      "numeral": "IV",
       "text": "Now add altitude. At thirty-five thousand feet, the air has less than a third of its sea-level density. And because it is colder, the speed of sound is lower too. So the stall speed rises, while the maximum speed, set by Mach, falls. Between those two walls, the safe band narrows. Pilots call the point where they meet the coffin corner. Ice pushes the stall wall forward. Turbulence throws the aircraft back and forth. And the margin can vanish in seconds."
     },
     {
       "id": "dive",
       "chapter": "Overspeed",
-      "numeral": "VI",
+      "numeral": "V",
       "text": "The crew asked to climb to thirty-seven thousand feet. Moments later, they reported an overspeed and a rapid descent. Flight data shows the jet descending at more than thirty-two thousand feet per minute. That is over one hundred and sixty meters per second, more than three hundred and sixty miles per hour, straight down. Near the speed of sound, shock waves form on top of the wing. The center of lift shifts backward, and the nose wants to pitch down even further. It is called Mach tuck. And because aerodynamic loads grow with the square of speed, the structure can be pushed past its design limits. The NTSB says there is evidence the aircraft broke apart in flight."
     },
     {
       "id": "outro",
       "chapter": "What We Don't Know",
-      "numeral": "VII",
+      "numeral": "VI",
       "text": "None of this is a conclusion yet. The NTSB is still recovering wreckage and data, and a preliminary report is expected within weeks. The probable cause may take more than a year. But the lesson is an old one in aviation. You don't fly through a thunderstorm. You go around it, by twenty nautical miles or more. Because inside, physics doesn't negotiate. In memory of the nine lives lost."
     }
   ]
