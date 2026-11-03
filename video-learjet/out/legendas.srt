@@ -1,0 +1,339 @@
+1
+00:00:00,600 --> 00:00:02,506
+Thirty-five thousand feet.
+
+2
+00:00:03,061 --> 00:00:04,835
+Inside a growing thunderstorm,
+
+3
+00:00:05,072 --> 00:00:06,215
+over southern Florida.
+
+4
+00:00:06,882 --> 00:00:08,432
+A little over a minute later,
+
+5
+00:00:08,673 --> 00:00:11,322
+radar shows this jet at eight thousand seven
+
+6
+00:00:11,342 --> 00:00:12,679
+hundred and fifty feet.
+
+7
+00:00:13,116 --> 00:00:15,584
+Falling faster than thirty thousand feet
+
+8
+00:00:15,605 --> 00:00:18,721
+per minute. This is the physics of those
+
+9
+00:00:18,741 --> 00:00:19,633
+sixty seconds.
+
+10
+00:00:23,026 --> 00:00:25,956
+On November first, a Learjet 60 business
+
+11
+00:00:25,976 --> 00:00:27,823
+jet left Austin, Texas,
+
+12
+00:00:27,996 --> 00:00:30,270
+bound for North Eleuthera in the Bahamas.
+
+13
+00:00:30,857 --> 00:00:32,599
+Just before one in the afternoon,
+
+14
+00:00:32,850 --> 00:00:35,289
+it came down in a residential neighborhood
+
+15
+00:00:35,309 --> 00:00:37,080
+in Greenacres, Palm Beach County.
+
+16
+00:00:37,705 --> 00:00:39,872
+All nine people on board were killed.
+
+17
+00:00:40,492 --> 00:00:42,792
+The official cause has not been determined.
+
+18
+00:00:43,372 --> 00:00:45,884
+But the flight data already tells a story,
+
+19
+00:00:46,391 --> 00:00:48,962
+and it is a story about physics.
+
+20
+00:00:52,540 --> 00:00:54,223
+At around twelve forty-seven,
+
+21
+00:00:54,440 --> 00:00:56,769
+the crew told controllers they were picking
+
+22
+00:00:56,790 --> 00:00:57,848
+up light clear ice,
+
+23
+00:00:58,083 --> 00:00:59,283
+moderate turbulence,
+
+24
+00:00:59,303 --> 00:01:01,799
+and altitude swings of about seven hundred
+
+25
+00:01:01,819 --> 00:01:04,822
+feet. Weather radar suggests the jet had
+
+26
+00:01:04,842 --> 00:01:07,297
+flown into a rapidly building thunderstorm
+
+27
+00:01:07,317 --> 00:01:09,861
+cell. Inside a cumulonimbus,
+
+28
+00:01:10,092 --> 00:01:13,073
+updrafts can exceed thirty meters per second.
+
+29
+00:01:13,590 --> 00:01:15,896
+They loft water droplets miles above the
+
+30
+00:01:15,917 --> 00:01:18,584
+freezing level, where they stay liquid far
+
+31
+00:01:18,604 --> 00:01:20,644
+below zero. Supercooled.
+
+32
+00:01:21,188 --> 00:01:22,497
+The moment they hit a wing,
+
+33
+00:01:22,847 --> 00:01:23,646
+they freeze.
+
+34
+00:01:27,104 --> 00:01:28,590
+Here is why that matters.
+
+35
+00:01:29,136 --> 00:01:30,979
+Lift equals one half,
+
+36
+00:01:31,247 --> 00:01:34,190
+times air density, times velocity squared,
+
+37
+00:01:34,450 --> 00:01:37,428
+times wing area, times the lift coefficient.
+
+38
+00:01:38,024 --> 00:01:40,519
+That coefficient depends on the exact shape
+
+39
+00:01:40,539 --> 00:01:43,606
+of the wing. A thin ridge of ice on the
+
+40
+00:01:43,626 --> 00:01:45,823
+leading edge trips the smooth airflow.
+
+41
+00:01:46,307 --> 00:01:48,941
+Maximum lift can drop by more than thirty
+
+42
+00:01:48,961 --> 00:01:51,441
+percent, and the wing stalls at a lower
+
+43
+00:01:51,461 --> 00:01:52,339
+angle of attack.
+
+44
+00:01:55,773 --> 00:01:59,255
+Now add altitude. At thirty-five thousand
+
+45
+00:01:59,275 --> 00:02:02,032
+feet, the air has less than a third of its
+
+46
+00:02:02,052 --> 00:02:04,879
+sea-level density. And because it is colder,
+
+47
+00:02:05,138 --> 00:02:06,909
+the speed of sound is lower too.
+
+48
+00:02:07,367 --> 00:02:09,228
+So the stall speed rises,
+
+49
+00:02:09,442 --> 00:02:10,736
+while the maximum speed,
+
+50
+00:02:10,939 --> 00:02:12,682
+set by Mach, falls.
+
+51
+00:02:13,174 --> 00:02:14,618
+Between those two walls,
+
+52
+00:02:14,819 --> 00:02:16,376
+the safe band narrows.
+
+53
+00:02:16,807 --> 00:02:19,051
+Pilots call the point where they meet the
+
+54
+00:02:19,071 --> 00:02:22,109
+coffin corner. Ice pushes the stall wall
+
+55
+00:02:22,129 --> 00:02:24,909
+forward. Turbulence throws the aircraft
+
+56
+00:02:24,929 --> 00:02:28,086
+back and forth. And the margin can vanish
+
+57
+00:02:28,106 --> 00:02:28,858
+in seconds.
+
+58
+00:02:32,279 --> 00:02:34,725
+The crew asked to climb to thirty-seven
+
+59
+00:02:34,745 --> 00:02:36,965
+thousand feet. Moments later,
+
+60
+00:02:37,170 --> 00:02:40,075
+they reported an overspeed and a rapid descent.
+
+61
+00:02:40,641 --> 00:02:42,984
+Flight data shows the jet descending at
+
+62
+00:02:43,004 --> 00:02:45,581
+more than thirty-two thousand feet per minute.
+
+63
+00:02:46,065 --> 00:02:48,561
+That is over one hundred and sixty meters
+
+64
+00:02:48,581 --> 00:02:51,055
+per second, more than three hundred and
+
+65
+00:02:51,076 --> 00:02:52,242
+sixty miles per hour,
+
+66
+00:02:52,548 --> 00:02:55,495
+straight down. Near the speed of sound,
+
+67
+00:02:55,730 --> 00:02:57,858
+shock waves form on top of the wing.
+
+68
+00:02:58,333 --> 00:03:00,291
+The center of lift shifts backward,
+
+69
+00:03:00,573 --> 00:03:03,190
+and the nose wants to pitch down even further.
+
+70
+00:03:03,624 --> 00:03:05,159
+It is called Mach tuck.
+
+71
+00:03:05,683 --> 00:03:08,091
+And because aerodynamic loads grow with
+
+72
+00:03:08,112 --> 00:03:09,381
+the square of speed,
+
+73
+00:03:09,724 --> 00:03:12,221
+the structure can be pushed past its design
+
+74
+00:03:12,242 --> 00:03:15,378
+limits. The NTSB says there is evidence
+
+75
+00:03:15,398 --> 00:03:17,797
+the aircraft broke apart in flight.
+
+76
+00:03:21,272 --> 00:03:23,243
+None of this is a conclusion yet.
+
+77
+00:03:23,798 --> 00:03:26,724
+The NTSB is still recovering wreckage and
+
+78
+00:03:26,744 --> 00:03:29,696
+data, and a preliminary report is expected
+
+79
+00:03:29,715 --> 00:03:32,638
+within weeks. The probable cause may take
+
+80
+00:03:32,659 --> 00:03:35,799
+more than a year. But the lesson is an old
+
+81
+00:03:35,820 --> 00:03:38,733
+one in aviation. You don't fly through a
+
+82
+00:03:38,754 --> 00:03:40,870
+thunderstorm. You go around it,
+
+83
+00:03:41,201 --> 00:03:43,238
+by twenty nautical miles or more.
+
+84
+00:03:43,792 --> 00:03:46,747
+Because inside, physics doesn't negotiate.
+
+85
+00:03:47,569 --> 00:03:49,688
+In memory of the nine lives lost.
