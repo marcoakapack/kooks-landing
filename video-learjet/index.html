@@ -337,7 +337,7 @@ function makeStorm() {
       s.position.set(wrap(b.x + off.x, -B.x, B.x), wrap(b.y + off.y, -B.y, B.y), wrap(b.z + off.z, -B.z, B.z));
       const d = s.position.distanceTo(cam.position);
       s.material.opacity = s.userData.op * ss(10, 70, d) * (o.cloudK ?? 1);
-      s.material.color.copy(s.userData.col).multiplyScalar((o.dark ?? 1) + fl * 2.2);
+      s.material.color.copy(s.userData.col).multiplyScalar((o.dark ?? 1) + fl * .6);
     }
     const rd = flow.clone().add(tmp.set(0, -38, 0)).normalize().multiplyScalar(2.5 + (o.speed ?? 140) * .028);
     for (let i = 0; i < NR; i++) { const b = rbase[i]; const x = wrap(b.x + roff.x, -70, 70), y = wrap(b.y + roff.y, -45, 45), z = wrap(b.z + roff.z, -55, 55); rp.set([x, y, z, x + rd.x, y + rd.y, z + rd.z], i * 6); }
@@ -352,8 +352,8 @@ function makeStorm() {
       b.rotation.set(0, Math.atan2(cam.position.x - b.position.x, cam.position.z - b.position.z), 0);
       const k = clamp(o.flash.f * 1.3) * (o.boltK ?? 1); b.userData.core.opacity = k; b.userData.halo.opacity = k * .22;
     }
-    scene.background.copy(fogC).multiplyScalar(o.dark ?? 1).lerp(flashC, fl * .55); scene.fog.color.copy(scene.background);
-    flashL.intensity = fl * 6; hemi.intensity = 2.4 * (o.dark ?? 1); key.intensity = 2.2 * (o.dark ?? 1);
+    scene.background.copy(fogC).multiplyScalar(o.dark ?? 1).lerp(flashC, fl * .15); scene.fog.color.copy(scene.background);
+    flashL.intensity = fl * 2; hemi.intensity = 2.4 * (o.dark ?? 1); key.intensity = 2.2 * (o.dark ?? 1);
     draw(scene, cam, o.bloom ?? .75, .82);
   }
   return { scene, cam, jet, update };
@@ -579,7 +579,7 @@ function makeCB() {
       const vis = ss(s.userData.h - .8, s.userData.h + .2, grow * 14.5);
       s.material.opacity = s.userData.op * vis * (s.userData.h > 2.6 || Math.hypot(s.position.x, s.position.z) < 8 ? (o.cloudK ?? 1) : 1);
       const d2 = s.position.distanceToSquared(fc);
-      s.material.color.copy(s.userData.col).multiplyScalar(1 + F * (1.2 * Math.exp(-d2 / 14) + .15));
+      s.material.color.copy(s.userData.col).multiplyScalar(1 + F * (.5 * Math.exp(-d2 / 14) + .05));
     }
     const pk = o.parts || 0;
     for (let i = 0; i < NP; i++) {
@@ -778,7 +778,7 @@ function setup(timings) {
   STRIKES.sort((a, b) => a - b);
   PUNCH = []; let lastP = -9;
   SC.forEach(s => s.words.forEach(o => { const tt = s.start + o.t; if ((o.k === 'red' || o.k === 'num0') && tt - lastP > 1.1) { PUNCH.push(tt); lastP = tt; } }));
-  return { total: TOTAL, fps: 24, scenes: SC.map(s => ({ id: s.id, start: s.start, dur: s.dur, lead: s.lead, speech: s.speech, sentence_starts: s.st })), strikes: STRIKES };
+  return { total: TOTAL, fps: 24, punches: PUNCH, scenes: SC.map(s => ({ id: s.id, start: s.start, dur: s.dur, lead: s.lead, speech: s.speech, sentence_starts: s.st })), strikes: STRIKES };
 }
 
 /* ============================== KINETIC TYPOGRAPHY ============================== */
@@ -886,7 +886,7 @@ const SCENES = {
       // 3. inside: chase cam, turbulence and rain
       const u = seg(lt, c2, c3);
       storm.update(t, { speed: 170, turb: .9, flash: fl, cam: lerpShot({ pos: [-9, 1.6, 8.5], look: [2, .2, 0], fov: 36 }, { pos: [-5.5, 2.4, 4.6], look: [5, .4, -.4], fov: 40 }, eio(u)) });
-      post(t); if (fl.f) { g.fillStyle = `rgba(240,245,255,${fl.f * .15})`; g.fillRect(0, 0, W, H); }
+      post(t); 
       ret.flash = fl.f;
     } else if (lt < c4) {
       // 4. the dive
@@ -896,7 +896,7 @@ const SCENES = {
       let cam = lt < mid ? { dist: lerp(26, 20, dv), az: lerp(2.4, 3.3, seg(lt, c3, mid)), el: lerp(.1, .5, dv), fov: 44, target: [0, 0, 0], roll: lerp(0, .14, dv) }
         : { pos: [-16, 6, 6], look: [8, -3, 0], fov: 50, roll: .1 };
       storm.update(t, { pitch: -.9 * dv, roll: .62 * dv, speed: 170 + 230 * dv, turb: .8 + .7 * dv, flash: fl, rainK: 1 + dv, jetOff: lt < mid ? [0, -fa * 30, 0] : [0, 0, 0], cam });
-      post(t, { right: 1 }); if (fl.f) { g.fillStyle = `rgba(240,245,255,${fl.f * .15})`; g.fillRect(0, 0, W, H); }
+      post(t, { right: 1 }); 
       const ha = win(lt, c3 + .1, c4 + .3, .3, .3);
       const prog = ein(seg(lt, c3 + .5, sc.E(3) - .2)); const alt = lerp(35000, 8750, prog);
       const vs = -32000 * ss(c3 + .5, c3 + 2.6, lt);
@@ -1008,7 +1008,7 @@ const SCENES = {
     if (lt < sw1) {
       const u = seg(lt, 0, sw1);
       storm.update(t, { pitch: .02, speed: 150, turb: 1.3, flash: fl, cam: lerpShot({ pos: [12, 1.4, 5.5], look: [3, .2, 0], fov: 34 }, { pos: [9, .4, 6.8], look: [-1, .5, 0], fov: 38 }, eio(u)) });
-      post(t); if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .12})`; g.fillRect(0, 0, W, H); }
+      post(t); 
       const lines = ['“…light clear ice…”', '“…moderate turbulence…”', '“…plus or minus seven hundred feet…”'];
       const span = (sc.E(0) - s(0)) / 3;
       lines.forEach((ln, i) => radio('CREW  →  ATC  ·  12:47 P.M.  ·  PARAPHRASED', ln, win(lt, s(0) + i * span, s(0) + (i + 1) * span, .3, .3)));
@@ -1141,7 +1141,7 @@ const SCENES = {
       else if (lt < s(2)) cam = { dist: lerp(30, 24, dv), az: lerp(2.6, 3.2, dv), el: lerp(.05, -.2, dv), fov: 44, roll: .1 * dv };
       else cam = { pos: [-17, 4.5, 7.5], look: [6, -1, 0], fov: 46, roll: 0 };
       storm.update(t, { pitch: .06 * climb - 1.0 * dv, roll: .7 * dv + .15 * Math.sin(lt * 1.3) * dv, speed: 150 + 240 * dv, turb: 1 + .8 * dv, flash: fl, cam, rainK: 1 + dv });
-      post(t, { vig: 1.2 }); if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .12})`; g.fillRect(0, 0, W, H); }
+      post(t, { vig: 1.2 }); 
       radio('CREW  →  ATC  ·  PARAPHRASED', '“…request flight level three-seven-zero…”', win(lt, s(0) + .1, s(1) - .1, .3, .3));
       const oa = win(lt, s(1) + .5, s(2) + .2, .2, .3) * ((Math.floor(lt * 3.2) % 2) ? 1 : .25);
       T('OVERSPEED', W / 2, 240, { s: 44, w: 700, ls: 16, al: 'center', c: RED, a: oa, glow: 24, glowC: RED });
@@ -1161,7 +1161,7 @@ const SCENES = {
       const cam = lerpShot({ pos: [-7.5, 3.3, 1.5], look: [-.6, -.5, 4.3], fov: 40 }, { pos: [-6.5, 2.7, 2.6], look: [-.6, -.5, 4.6], fov: 38 }, eio(u));
       storm.update(t, { pitch: -1.0, roll: .7, speed: 420, turb: 1.4, flash: fl, cam, rainK: 1.5, shock: isFlex ? 0 : ss(A + .2, A + 1.4, lt), shockF: isFlex ? .62 : lerp(.32, .45, u),
         flex: isFlex ? ss(C + .3, C + 3, lt) * (1 + .15 * Math.sin(lt * 18)) : 0, stress: isFlex ? ss(C + 1.5, D, lt) * (.75 + .25 * Math.sin(lt * 9)) : 0, boltK: .6 });
-      post(t, { vig: 1.2 }); if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .1})`; g.fillRect(0, 0, W, H); }
+      post(t, { vig: 1.2 }); 
       if (!isFlex) KT('SHOCK WAVE', W / 2, 780, { s: 52, w: 600, ls: 18, al: 'center', c: '#fff1c9', a: win(lt, A + 1, B + .2), glow: 18, glowC: AMBER }, A + 1, lt);
       else {
         const a = win(lt, C + .4, D + .2);
@@ -1195,7 +1195,7 @@ const SCENES = {
     // NTSB
     storm.update(t, { pitch: -.9, roll: .8, speed: 300, turb: 1.4, flash: fl, dark: .5, hideJet: true, cam: { dist: 140, az: 3.4, el: -.25, fov: 40, target: [0, 0, 0] } });
     post(t, { vig: 1.3 }); g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(0, 0, W, H);
-    if (fl.f) { g.fillStyle = `rgba(215,228,255,${fl.f * .08})`; g.fillRect(0, 0, W, H); }
+    
     const a = win(lt, D + .4, sc.dur + 1, 1, .1);
     T('NTSB', W / 2, 450, { s: 24, w: 600, ls: 16, al: 'center', c: AMBER, a });
     KT('Evidence of an in-flight breakup.', W / 2, 560, { s: 66, w: 300, ls: 1, al: 'center', a, stg: .025 }, D + .4, lt);
@@ -1222,7 +1222,7 @@ const SCENES = {
       const u = seg(lt, A, B);
       const cam = { pos: [lerp(-40, 0, u), lerp(78, 70, u), lerp(95, 85, u)], look: [0, 6, 14], fov: 42 };
       cb.update(t, lt, { grow: 1, flash: fl, cloudK: 1, parts: 0, far: 600, ring: ss(s(5) - .1, s(5) + 1.2, lt), straight: win(lt, s(4), s(5) + .8, .5, .8), detour: eio(seg(lt, s(5) + .3, s(5) + 4)), detourJet: eio(seg(lt, s(5) + .3, B)), flLine: 0, cam });
-      post(t); if (fl.f) { g.fillStyle = `rgba(255,230,210,${fl.f * .06})`; g.fillRect(0, 0, W, H); }
+      post(t); 
       const [sx, sy] = proj(V3(-10, 10.7, 1), cb.cam); T('×', sx, sy + 14, { s: 50, w: 200, al: 'center', c: RED, a: win(lt, s(4) + .6, s(5) + .8, .3, .8) });
       const [rx, ry] = proj(V3(26, 10.7, -26), cb.cam); T('20 NM', rx + 20, ry, { s: 34, w: 300, ls: 6, c: GREEN, a: ss(s(5) + .8, s(5) + 1.6, lt) }); T('≈ 37 km', rx + 20, ry + 34, { s: 20, w: 300, c: 'rgba(255,255,255,.8)', a: ss(s(5) + .8, s(5) + 1.6, lt) });
       KT("Inside, physics doesn't negotiate.", W / 2, 800, { s: 60, w: 300, ls: 1, al: 'center', a: win(lt, s(6) - .05, B + .3, .3, .5), stg: .02 }, s(6) - .05, lt);
@@ -1258,14 +1258,49 @@ function renderFrame(t) {
   let punch = 0; for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < 1) punch = Math.max(punch, Math.exp(-d * 5) * ss(0, .04, d)); }
   const fl = flashAt(t).f * (res.flash !== undefined ? 1 : 0);
   const shx = (Math.sin(t * 61) + Math.sin(t * 37)) * (punch * 5 + fl * 7), shy = (Math.sin(t * 53 + 1) + Math.sin(t * 29)) * (punch * 4 + fl * 6);
-  GL.style.transform = `translate(${(dir * whip * 240 + shx).toFixed(1)}px,${shy.toFixed(1)}px) scale(${(1 + punch * .045 + whip * .27).toFixed(4)})`;
+  // never a static frame: every shot drifts in, and long shots get jump-zooms every ~2.6 s
+  const cutsAll = [0, ...(res.cuts || []).filter(c => c > 0 && c < sc.dur), sc.dur].sort((a, b) => a - b);
+  let s0 = 0, s1 = sc.dur; for (let i = 0; i + 1 < cutsAll.length; i++) if (lt >= cutsAll[i] && lt < cutsAll[i + 1]) { s0 = cutsAll[i]; s1 = cutsAll[i + 1]; }
+  const sl = s1 - s0, u = clamp((lt - s0) / sl), shotN = cutsAll.indexOf(s0) + sc.idx * 7;
+  const drift = 1.015 + .075 * u;
+  let jz = 0, jx = 0, jy = 0;
+  if (sl > 3.6 && !res.noJump) {
+    const n = Math.max(2, Math.round(sl / 2.6)), seg2 = sl / n, k = Math.min(n - 1, Math.floor((lt - s0) / seg2)), into = lt - s0 - k * seg2;
+    const lvl = kk => (kk % 2) * .14 + (kk % 3 === 2 ? .06 : 0);
+    const e = ss(0, .14, into); jz = lerp(lvl(k - 1 < 0 ? 0 : k - 1), lvl(k), k ? e : 1);
+    const side = ((shotN + k) % 3 - 1); jx = side * 70 * jz / .14; jy = -20 * jz / .14;
+    if (k && into < .14) whip = Math.max(whip, (1 - into / .14) * .35);
+    if (k) CUTS_ABS.add(+(sc.start + s0 + k * seg2).toFixed(3));
+  }
+  (res.cuts || []).forEach(c => { if (c > 0 && c < sc.dur) CUTS_ABS.add(+(sc.start + c).toFixed(3)); }); CUTS_ABS.add(+sc.start.toFixed(3));
+  const Z = drift * (1 + jz) * (1 + punch * .05 + whip * .27);
+  GL.style.transform = `translate(${(dir * whip * 240 + shx - jx).toFixed(1)}px,${(shy - jy).toFixed(1)}px) scale(${Z.toFixed(4)})`;
   GL.style.filter = `contrast(1.14) saturate(1.18) brightness(.97) blur(${(whip * 16).toFixed(1)}px)`;
   let black = 0;
-  const edge = Math.min(lt, sc.dur - lt); black = Math.max(black, 1 - clamp(edge / .25));
+  const edge = Math.min(lt, sc.dur - lt); black = Math.max(black, (1 - clamp(edge / .1)) * .8);
   if (res.fadeIn) black = Math.max(black, 1 - clamp(lt / res.fadeIn));
   if (res.fadeOut) black = Math.max(black, ss(sc.dur - res.fadeOut, sc.dur, lt));
   if (black > 0) { g.fillStyle = `rgba(0,0,0,${black})`; g.fillRect(0, 0, W, H); }
   letterbox();
+  progressBar(t);
+}
+// chapter progress bar inside the top letterbox: viewers always see where they are and what's next
+const CUTS_ABS = new Set(); window.CUTS_ABS = CUTS_ABS;
+function progressBar(t) {
+  const h = SC[0]; if (t < h.start + h.dur - .3) return;
+  const a = ss(h.dur - .3, h.dur + .6, t) * (1 - ss(TOTAL - 4, TOTAL - 2, t)); if (a <= 0) return;
+  const x0 = 150, x1 = W - 150, y = 92, chs = SC.filter(s => s.chapter);
+  const T0 = chs[0].start, T1 = TOTAL; const X = v => x0 + (x1 - x0) * (v - T0) / (T1 - T0);
+  g.save(); g.globalAlpha = a;
+  chs.forEach((s, i) => {
+    const xa = X(s.start) + (i ? 6 : 0), xb = X(s.start + s.dur) - 6, cur = t >= s.start && t < s.start + s.dur, done = t >= s.start + s.dur;
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(xa, y, xb - xa, 4);
+    const fillTo = done ? xb : (cur ? lerp(xa, xb, (t - s.start) / s.dur) : xa);
+    if (fillTo > xa) { g.fillStyle = cur ? AMBER : 'rgba(255,181,71,.55)'; if (cur) { g.shadowColor = AMBER; g.shadowBlur = 10; } g.fillRect(xa, y, fillTo - xa, 4); g.shadowBlur = 0; }
+    g.font = `${cur ? 700 : 500} 13px Inter`; g.letterSpacing = '2px'; g.fillStyle = cur ? '#fff' : 'rgba(255,255,255,.45)'; g.textAlign = 'left';
+    g.fillText(`${s.numeral}  ${s.chapter.toUpperCase()}`, xa, y - 14);
+  });
+  g.restore();
 }
 window.setupTimeline = setup; window.renderFrame = renderFrame; window.TIMELINE = setup(null);
 for (const f of ['200 40px Inter', '300 40px Inter', '400 40px Inter', '500 40px Inter', '600 40px Inter', '700 40px Inter', 'italic 300 40px Inter']) await document.fonts.load(f);

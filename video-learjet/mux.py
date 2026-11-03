@@ -77,12 +77,41 @@ with wave.open(str(OUT / "ambient.wav"), "wb") as w:
     w.writeframes((st * 32767).astype("<i2").tobytes())
 print("  → out/ambient.wav")
 
+print("· sfx (whooshes on cuts, hits on key words)")
+sfx = np.zeros(N)
+nz = rng.standard_normal(int(.8 * SR)); bands = [lp(nz, f, 2) - lp(nz, f / 3, 2) for f in (700, 2200, 6500)]
+def whoosh(at, gain=1.0, L=.55):
+    n = int(L * SR); a = int((at - L * .6) * SR)
+    if a < 0 or a + n >= N: return
+    u = np.linspace(0, 1, n); env = np.sin(np.pi * u) ** 2.2
+    w0 = np.clip(1 - 2 * u, 0, 1); w2 = np.clip(2 * u - 1, 0, 1); w1 = 1 - w0 - w2      # sweep low → high
+    sig = bands[0][:n] * (1 - u) * .8 + bands[1][:n] * np.sin(np.pi * u) + bands[2][:n] * u * .6
+    sfx[a:a + n] += sig * env * gain
+def hit(at, gain=1.0):
+    n = int(1.1 * SR); a = int(at * SR)
+    if a < 0 or a + n >= N: return
+    tt = np.arange(n) / SR; f = 38 + 30 * np.exp(-tt / .08)
+    body = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-tt / .35)
+    click = lp(rng.standard_normal(n), 2500, 1) * np.exp(-tt / .015) * .5
+    sfx[a:a + n] += (body + click) * gain
+cuts = sorted({c for f in (OUT / "parts").glob("*.cuts.json") for c in json.loads(f.read_text())}) if (OUT / "parts").exists() else []
+last = -9
+for c in cuts:
+    if c - last > .35 and c > .5: whoosh(c, .9); last = c
+for p in tl.get("punches", []): hit(p, .8)
+for s in tl["scenes"][1:]: hit(s["start"] + .1, 1.3); whoosh(s["start"] + .05, 1.3, .8)
+sfx = sfx / (np.abs(sfx).max() + 1e-9) * .5
+with wave.open(str(OUT / "sfx.wav"), "wb") as w:
+    w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR)
+    w.writeframes((np.stack([sfx, sfx], 1) * 32767).astype("<i2").tobytes())
+print(f"  → out/sfx.wav ({len(cuts)} cuts, {len(tl.get('punches', []))} hits)")
+
 video = OUT / "video_silent.mp4"
 timings = AUD / "timings.json"
 if not timings.exists():
     dst = OUT / "video_sem_voz.mp4"
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video), "-i", str(OUT / "ambient.wav"),
-                    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(dst)], check=True)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video), "-i", str(OUT / "ambient.wav"), "-i", str(OUT / "sfx.wav"),
+                    "-filter_complex", "[1:a][2:a]amix=inputs=2:normalize=0[a]", "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(dst)], check=True)
     print("Sem voz ainda (audio/timings.json não existe). →", dst); sys.exit(0)
 
 tm = json.loads(timings.read_text())
@@ -96,17 +125,9 @@ for i, (sv, sa) in enumerate(zip(tl["scenes"], tm["scenes"])):
     chain = f"[{i + 2}:a]aresample=48000,aformat=channel_layouts=stereo"
     if abs(tempo - 1) > .005: chain += f",atempo={tempo:.4f}"
     chain += f",adelay={delay}|{delay}[v{i}]"; filters.append(chain); labels.append(f"[v{i}]")
-    # subtitles from character alignment
-    al = json.loads((AUD / f"alignment_{i:02d}.json").read_text())
-    chars, s0, s1 = al["characters"], al["character_start_times_seconds"], al["character_end_times_seconds"]
-    words, cur, ws = [], "", None
-    for c, a, b in zip(chars, s0, s1):
-        if c.isspace():
-            if cur: words.append((cur, ws, we)); cur = ""
-        else:
-            if not cur: ws = a
-            cur += c; we = b
-    if cur: words.append((cur, ws, we))
+    # subtitles (SRT for YouTube) from word timings
+    toks = [x["text"] for x in json.loads((ROOT / "script.json").read_text())["scenes"] if x["id"] == sa["id"]][0].split()
+    words = list(zip(toks, sa["word_starts"], sa["word_ends"]))
     line, ls = [], None
     for wd, a, b in words:
         if not line: ls = a
@@ -124,12 +145,12 @@ print("  → out/legendas.srt")
 n = len(labels)
 fc = ";".join(filters) + f";{''.join(labels)}amix=inputs={n}:normalize=0,volume=1.0,asplit=2[voice][sc];" \
      "[1:a]volume=0.55[bed];[bed][sc]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400[ducked];" \
-     "[voice][ducked]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
+     f"[{n + 2}:a]volume=0.5[fx];[voice][ducked][fx]amix=inputs=3:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
 vf = []
 if BURN:
     style = "FontName=Inter,FontSize=13,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=1.6,Shadow=0,MarginV=60"
     vf = ["-vf", f"subtitles={OUT / 'legendas.srt'}:force_style='{style}'"]
-cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video), "-i", str(OUT / "ambient.wav"), *inputs,
+cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video), "-i", str(OUT / "ambient.wav"), *inputs, "-i", str(OUT / "sfx.wav"),
        "-filter_complex", fc, "-map", "0:v", "-map", "[aout]", *(vf or ["-c:v", "copy"]),
        *(["-c:v", "libx264", "-crf", "19", "-pix_fmt", "yuv420p"] if BURN else []),
        "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", str(OUT / "final.mp4")]

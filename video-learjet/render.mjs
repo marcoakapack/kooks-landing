@@ -70,5 +70,7 @@ for (let i = 0; i < N; i++) {
 }
 ff.stdin.end();
 await new Promise(r => ff.on('close', r));
+// cut times seen in this chunk → sound design (whooshes) in mux.py
+fs.writeFileSync(OUT + '.cuts.json', JSON.stringify(await page.evaluate(() => [...window.CUTS_ABS].sort((a, b) => a - b))));
 await browser.close(); server.close();
 console.log('Wrote', OUT);
