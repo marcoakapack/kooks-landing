@@ -24,7 +24,7 @@ for envf in (".env.local", ".env"):
 API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 ARGV = sys.argv[1:]
 VOICE_ID = ARGV[ARGV.index("--voice") + 1] if "--voice" in ARGV else os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # default: "George"; pick a documentary narrator voice
-MODEL_ID = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+MODEL_ID = ARGV[ARGV.index("--model") + 1] if "--model" in ARGV else os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
 FORMAT = os.environ.get("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")  # 128 kbps works on every plan; 192 needs Creator+
 SETTINGS = {"stability": 0.55, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": True, "speed": 1.0}
 
@@ -34,6 +34,13 @@ if not API_KEY:
 script = json.loads((ROOT / "script.json").read_text(encoding="utf-8"))
 out = ROOT / "audio"; out.mkdir(exist_ok=True)
 SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def models():
+    req = urllib.request.Request("https://api.elevenlabs.io/v1/models", headers={"xi-api-key": API_KEY})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        for m in json.loads(r.read()):
+            print(f'{m["model_id"]:32s} {m.get("name", "")}')
 
 
 def tts(text, prev_text, next_text):
@@ -47,8 +54,14 @@ def tts(text, prev_text, next_text):
         with urllib.request.urlopen(req, timeout=180) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        sys.exit(f"ElevenLabs HTTP {e.code}: {e.read().decode(errors='replace')}")
+        msg = e.read().decode(errors='replace')
+        if e.code in (400, 422) and (prev_text or next_text):   # some models don't accept previous_text/next_text
+            return tts(text, None, None)
+        sys.exit(f"ElevenLabs HTTP {e.code}: {msg}")
 
+
+if "--models" in ARGV:
+    models(); sys.exit(0)
 
 if "--preview" in ARGV:
     # try a voice cheaply: only the opening scene, timings.json untouched
