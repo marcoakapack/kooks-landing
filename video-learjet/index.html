@@ -1,0 +1,1193 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>Learjet 60 — A física da queda</title>
+<style>
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#04060b}
+  canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+</style>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<canvas id="ov" width="1920" height="1080"></canvas>
+<script type="module">
+import * as THREE from './node_modules/three/build/three.module.js';
+
+/* =====================================================================
+   UTILITIES
+   ===================================================================== */
+const W = 1920, H = 1080;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const seg = (x, a, b) => clamp((x - a) / (b - a));
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eout = t => 1 - Math.pow(1 - t, 3);
+const ein = t => t * t * t;
+const wrap = (v, a, b) => a + ((((v - a) % (b - a)) + (b - a)) % (b - a));
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const fmt = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const fmtd = (n, d) => n.toFixed(d).replace('.', ',');
+// fade in at a, out at b
+const win = (lt, a, b, fi = .45, fo = .45) => ss(a, a + fi, lt) * (1 - ss(b - fo, b, lt));
+
+const AMBER = '#FFB547', CYAN = '#5CD6FF', RED = '#FF4D5E', GREEN = '#59F0A0';
+
+/* =====================================================================
+   RENDERER + 2D OVERLAY
+   ===================================================================== */
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const g = document.getElementById('ov').getContext('2d');
+
+function rr(x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function T(str, x, y, o = {}) {
+  if ((o.a ?? 1) <= 0.001) return 0;
+  g.save(); g.globalAlpha = clamp(o.a ?? 1);
+  g.font = `${o.it ? 'italic ' : ''}${o.w || 600} ${o.s || 40}px Inter, "Inter Display", sans-serif`;
+  g.fillStyle = o.c || '#fff'; g.textAlign = o.al || 'left'; g.textBaseline = o.bl || 'alphabetic';
+  g.letterSpacing = (o.ls || 0) + 'px';
+  if (o.sh !== false) { g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = o.sb ?? 16; }
+  g.fillText(str, x, y); const w = g.measureText(str).width; g.restore(); return w;
+}
+function P(x, y, w, h, a = 1, o = {}) {
+  if (a <= 0.001) return;
+  g.save(); g.globalAlpha = clamp(a);
+  g.fillStyle = o.bg || 'rgba(7,12,22,0.74)'; rr(x, y, w, h, o.r ?? 16); g.fill();
+  g.strokeStyle = o.bc || 'rgba(255,255,255,0.13)'; g.lineWidth = o.lw || 1.5; g.stroke();
+  if (o.accent) { g.fillStyle = o.accent; rr(x, y, 6, h, 3); g.fill(); }
+  g.restore();
+}
+function line(pts, o = {}) {
+  g.save(); g.globalAlpha = o.a ?? 1; g.strokeStyle = o.c || '#fff'; g.lineWidth = o.lw || 2;
+  g.lineCap = 'round'; g.lineJoin = 'round'; if (o.dash) g.setLineDash(o.dash);
+  if (o.glow) { g.shadowColor = o.c; g.shadowBlur = o.glow; }
+  g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); g.restore();
+}
+function arrow(x1, y1, x2, y2, o = {}) {
+  const a = Math.atan2(y2 - y1, x2 - x1), hs = o.hs || 18;
+  line([[x1, y1], [x2, y2]], o);
+  g.save(); g.globalAlpha = o.a ?? 1; g.fillStyle = o.c || '#fff';
+  if (o.glow) { g.shadowColor = o.c; g.shadowBlur = o.glow; }
+  g.beginPath(); g.moveTo(x2 + Math.cos(a) * 4, y2 + Math.sin(a) * 4);
+  g.lineTo(x2 - Math.cos(a - .45) * hs, y2 - Math.sin(a - .45) * hs);
+  g.lineTo(x2 - Math.cos(a + .45) * hs, y2 - Math.sin(a + .45) * hs); g.closePath(); g.fill(); g.restore();
+}
+function proj(v, cam) { const p = v.clone().project(cam); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; }
+
+/* shared textures */
+function cloudTex(seed) {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); const r = rng(seed);
+  for (let i = 0; i < 42; i++) {
+    const a = r() * Math.PI * 2, d = r() * 62, px = 128 + Math.cos(a) * d, py = 128 + Math.sin(a) * d * .75, rad = 26 + r() * 40;
+    const gr = x.createRadialGradient(px, py, 0, px, py, rad);
+    gr.addColorStop(0, 'rgba(255,255,255,0.20)'); gr.addColorStop(.6, 'rgba(255,255,255,0.08)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr; x.beginPath(); x.arc(px, py, rad, 0, 7); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const CLOUD_TEX = [cloudTex(3), cloudTex(17), cloudTex(91)];
+function dotTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.25, 'rgba(255,255,255,.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+}
+const DOT_TEX = dotTex();
+
+/* =====================================================================
+   JET MODEL (procedural, generic swept-wing T-tail business jet)
+   ===================================================================== */
+function makeJet() {
+  const grp = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xeef1f5, metalness: .35, roughness: .32 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x0f1724, metalness: .7, roughness: .2 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x1e3f73, metalness: .4, roughness: .4 });
+  const prof = [[0.06, 0], [0.32, 0.4], [0.58, 1.6], [0.8, 3.6], [0.87, 5.6], [0.88, 10.4], [0.82, 12.2], [0.64, 13.6], [0.4, 14.7], [0.16, 15.32], [0.0, 15.5]]
+    .map(p => new THREE.Vector2(p[0], p[1]));
+  const fg = new THREE.LatheGeometry(new THREE.SplineCurve(prof).getPoints(70), 40);
+  fg.rotateZ(-Math.PI / 2); fg.translate(-7.75, 0, 0);
+  grp.add(new THREE.Mesh(fg, white));
+  // windshield
+  const ws = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), dark); ws.scale.set(1.25, .36, .66); ws.position.set(5.15, .46, 0); grp.add(ws);
+  // cabin windows
+  for (let i = 0; i < 6; i++) for (const s of [-1, 1]) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(.42, .3, .06), dark); w.position.set(2.6 - i * 1.05, .28, s * .86); grp.add(w);
+  }
+  // cheat line
+  const cl = new THREE.Mesh(new THREE.CylinderGeometry(.885, .885, 11, 40, 1, true), accent);
+  cl.rotation.z = Math.PI / 2; cl.position.set(-0.5, 0, 0); cl.scale.set(1, 1, 1);
+  const clMask = new THREE.Mesh(new THREE.BoxGeometry(11.2, .12, 2), accent); clMask.position.set(-0.5, -.05, 0);
+  // simple stripe: a thin box hugging sides
+  for (const s of [-1, 1]) { const st = new THREE.Mesh(new THREE.BoxGeometry(12.5, .1, .02), accent); st.position.set(-.8, -.05, s * .875); grp.add(st); }
+  // wings
+  const wsh = new THREE.Shape(); wsh.moveTo(1.7, .5); wsh.lineTo(-1.15, 6.7); wsh.lineTo(-2.35, 6.7); wsh.lineTo(-2.3, .5); wsh.closePath();
+  const wg = new THREE.ExtrudeGeometry(wsh, { depth: .16, bevelEnabled: true, bevelThickness: .07, bevelSize: .07, bevelSegments: 2 });
+  wg.rotateX(Math.PI / 2);
+  const winglet = new THREE.Shape(); winglet.moveTo(-1.15, 0); winglet.lineTo(-2.35, 0); winglet.lineTo(-2.75, 1.1); winglet.lineTo(-2.15, 1.1); winglet.closePath();
+  const wlg = new THREE.ExtrudeGeometry(winglet, { depth: .07, bevelEnabled: false });
+  for (const s of [1, -1]) {
+    const w = new THREE.Mesh(wg, white); w.position.y = -.42; w.scale.z = s; w.rotation.x = -.055 * s; grp.add(w);
+    const wl = new THREE.Mesh(wlg, accent); wl.position.set(0, -.12, s * 6.72 - .035); grp.add(wl);
+  }
+  // engines
+  for (const s of [1, -1]) {
+    const e = new THREE.Mesh(new THREE.CylinderGeometry(.52, .44, 3.3, 28), white); e.rotation.z = Math.PI / 2; e.position.set(-4.7, .58, s * 1.55); grp.add(e);
+    const ei = new THREE.Mesh(new THREE.CylinderGeometry(.44, .44, .1, 28), dark); ei.rotation.z = Math.PI / 2; ei.position.set(-3.03, .58, s * 1.55); grp.add(ei);
+    const eb = new THREE.Mesh(new THREE.TorusGeometry(.5, .06, 8, 28), accent); eb.rotation.y = Math.PI / 2; eb.position.set(-3.1, .58, s * 1.55); grp.add(eb);
+    const py = new THREE.Mesh(new THREE.BoxGeometry(1.5, .16, .9), white); py.position.set(-4.8, .55, s * 1.0); grp.add(py);
+  }
+  // vertical tail
+  const vt = new THREE.Shape(); vt.moveTo(-5.2, .5); vt.lineTo(-7.15, 3.75); vt.lineTo(-8.55, 3.75); vt.lineTo(-7.95, .5); vt.closePath();
+  const vtg = new THREE.ExtrudeGeometry(vt, { depth: .16, bevelEnabled: true, bevelThickness: .04, bevelSize: .04, bevelSegments: 1 }); vtg.translate(0, 0, -.08);
+  grp.add(new THREE.Mesh(vtg, accent));
+  // horizontal T-tail
+  const ht = new THREE.Shape(); ht.moveTo(-7.05, 0); ht.lineTo(-8.1, 2.8); ht.lineTo(-8.85, 2.8); ht.lineTo(-8.45, 0); ht.closePath();
+  const htg = new THREE.ExtrudeGeometry(ht, { depth: .1, bevelEnabled: true, bevelThickness: .03, bevelSize: .03, bevelSegments: 1 }); htg.rotateX(Math.PI / 2);
+  for (const s of [1, -1]) { const m = new THREE.Mesh(htg, white); m.position.y = 3.82; m.scale.z = s; grp.add(m); }
+  // lights: glow sprites
+  const mkGlow = (col, size) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT_TEX, color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); sp.scale.set(size, size, 1); grp.add(sp); return sp; };
+  const red = mkGlow(0xff3030, 1.6); red.position.set(-1.6, -.1, -6.75);
+  const grn = mkGlow(0x30ff70, 1.6); grn.position.set(-1.6, -.1, 6.75);
+  const st1 = mkGlow(0xffffff, 3); st1.position.set(-2.4, -.1, -6.8);
+  const st2 = mkGlow(0xffffff, 3); st2.position.set(-2.4, -.1, 6.8);
+  const bcn = mkGlow(0xff2020, 1.8); bcn.position.set(-2, .95, 0);
+  const lights = { red, grn, st1, st2, bcn };
+  function blink(t, k = 1) {
+    const s = (t % 1.25) < .07 ? 1 : 0; st1.material.opacity = st2.material.opacity = s * k;
+    bcn.material.opacity = (0.5 + .5 * Math.sin(t * 6.5)) * k; red.material.opacity = grn.material.opacity = .9 * k;
+  }
+  return { group: grp, lights, blink, mats: { white, accent } };
+}
+
+/* =====================================================================
+   WORLD: STORM (chase camera inside convective cloud)
+   ===================================================================== */
+function makeStorm() {
+  const scene = new THREE.Scene();
+  const fogC = new THREE.Color(0x1f2835), flashC = new THREE.Color(0x9eb2d6);
+  scene.background = fogC.clone(); scene.fog = new THREE.FogExp2(fogC.clone(), 0.0042);
+  const hemi = new THREE.HemisphereLight(0xa8bad4, 0x161b24, 1.5); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xd6deea, 1.4); dir.position.set(30, 80, 30); scene.add(dir);
+  const flashL = new THREE.DirectionalLight(0xe2ebff, 0); flashL.position.set(-40, 60, -80); scene.add(flashL);
+  const jet = makeJet(); scene.add(jet.group); jet.group.rotation.order = 'YZX';
+  const cam = new THREE.PerspectiveCamera(42, W / H, .5, 4000);
+  const r = rng(7), clouds = [];
+  const B = { x: 380, y: 200, z: 280 };
+  for (let i = 0; i < 230; i++) {
+    const shade = .32 + r() * .32;
+    const col = new THREE.Color(shade * .92, shade * .97, shade * 1.06);
+    const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[i % 3], color: col.clone(), transparent: true, opacity: .55 + r() * .4, depthWrite: false });
+    const s = new THREE.Sprite(m); const sc = 70 + r() * 130; s.scale.set(sc, sc * .8, 1);
+    s.userData = { base: new THREE.Vector3((r() * 2 - 1) * B.x, (r() * 2 - 1) * B.y, (r() * 2 - 1) * B.z), col, op: m.opacity };
+    scene.add(s); clouds.push(s);
+  }
+  // rain streaks
+  const NR = 2600, rp = new Float32Array(NR * 6), rbase = [];
+  for (let i = 0; i < NR; i++) rbase.push(new THREE.Vector3((r() * 2 - 1) * 70, (r() * 2 - 1) * 45, (r() * 2 - 1) * 55));
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.BufferAttribute(rp, 3));
+  const rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xa9bad2, transparent: true, opacity: .32, depthWrite: false }));
+  scene.add(rain);
+  const off = new THREE.Vector3(), roff = new THREE.Vector3(); let lastT = null;
+  const tmp = new THREE.Vector3();
+  function update(t, o) {
+    const dt = lastT === null ? 0 : clamp(t - lastT, 0, .1); lastT = t;
+    const tb = o.turb || 0;
+    const n1 = Math.sin(t * 6.3) * .5 + Math.sin(t * 11.7 + 1.3) * .3 + Math.sin(t * 2.1 + .4) * .7;
+    const n2 = Math.sin(t * 5.1 + 2) * .5 + Math.sin(t * 9.3) * .4 + Math.sin(t * 1.7) * .4;
+    const pitch = o.pitch || 0, roll = o.roll || 0;
+    jet.group.position.set(0, tb * n1 * 1.4, 0);
+    jet.group.rotation.set(roll + tb * n2 * .07, 0, pitch + tb * n1 * .035);
+    jet.blink(t);
+    const fwd = new THREE.Vector3(Math.cos(pitch), Math.sin(pitch), 0);
+    const flow = fwd.clone().multiplyScalar(-(o.speed ?? 140));
+    off.addScaledVector(flow, dt);
+    roff.addScaledVector(flow, dt * 1.25).add(tmp.set(0, -38 * dt, 0));
+    const fl = o.flash || 0;
+    // camera
+    const c = o.cam || { dist: 32, az: 2.7, el: .12 };
+    const sh = tb * .35;
+    cam.position.set(c.dist * Math.cos(c.el) * Math.cos(c.az), c.dist * Math.sin(c.el), c.dist * Math.cos(c.el) * Math.sin(c.az))
+      .add(tmp.set(Math.sin(t * 17) * sh, Math.sin(t * 13 + 1) * sh, Math.sin(t * 19 + 2) * sh));
+    cam.fov = c.fov || 42; if (c.shift) cam.setViewOffset(W, H, -c.shift, c.shiftY || 0, W, H); else cam.clearViewOffset(); cam.updateProjectionMatrix();
+    cam.lookAt(fwd.clone().multiplyScalar(c.lead ?? 4).add(jet.group.position.clone().multiplyScalar(.6)));
+    for (const s of clouds) {
+      const b = s.userData.base;
+      s.position.set(wrap(b.x + off.x, -B.x, B.x), wrap(b.y + off.y, -B.y, B.y), wrap(b.z + off.z, -B.z, B.z));
+      const d = s.position.distanceTo(cam.position);
+      s.material.opacity = s.userData.op * ss(12, 70, d) * (o.cloudK ?? 1);
+      s.material.color.copy(s.userData.col).multiplyScalar(1 + fl * 1.9);
+    }
+    // rain
+    const rd = flow.clone().add(tmp.set(0, -38, 0)).normalize().multiplyScalar(2.5 + (o.speed ?? 140) * .025);
+    for (let i = 0; i < NR; i++) {
+      const b = rbase[i];
+      const x = wrap(b.x + roff.x, -70, 70), y = wrap(b.y + roff.y, -45, 45), z = wrap(b.z + roff.z, -55, 55);
+      rp.set([x, y, z, x + rd.x, y + rd.y, z + rd.z], i * 6);
+    }
+    rg.attributes.position.needsUpdate = true;
+    rain.material.opacity = .3 * (o.rainK ?? 1);
+    scene.background.copy(fogC).lerp(flashC, fl * .55); scene.fog.color.copy(scene.background);
+    flashL.intensity = fl * 5;
+    hemi.intensity = 1.5 * (o.dark ?? 1);
+    renderer.render(scene, cam);
+  }
+  return { scene, cam, jet, update };
+}
+
+/* =====================================================================
+   WORLD: CLEAR SKY above cloud deck (day / dusk)
+   ===================================================================== */
+function makeSky() {
+  const scene = new THREE.Scene();
+  const U = { top: { value: new THREE.Vector3() }, hor: { value: new THREE.Vector3() }, bot: { value: new THREE.Vector3() } };
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false, uniforms: U,
+    vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
+    fragmentShader: `uniform vec3 top,hor,bot; varying vec3 vP; void main(){ float h=vP.y; vec3 c = h>0.0 ? mix(hor,top,pow(clamp(h,0.,1.),0.55)) : mix(hor,bot,pow(clamp(-h,0.,1.),0.35)); gl_FragColor=vec4(c,1.0);} `
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(2500, 32, 16), skyMat); scene.add(sky);
+  scene.fog = new THREE.Fog(0xffffff, 250, 900);
+  const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x8a7c70, 1.6); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff0d8, 3.0); sun.position.set(60, 50, 80); scene.add(sun);
+  const jet = makeJet(); scene.add(jet.group);
+  const cam = new THREE.PerspectiveCamera(38, W / H, .5, 6000);
+  const r = rng(21), clouds = [];
+  for (let i = 0; i < 260; i++) {
+    const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[i % 3], color: 0xffffff, transparent: true, opacity: .95, depthWrite: false });
+    const s = new THREE.Sprite(m); const sc = 120 + r() * 200; s.scale.set(sc, sc * .55, 1);
+    s.userData.base = new THREE.Vector3((r() * 2 - 1) * 700, -95 - r() * 40, (r() * 2 - 1) * 500); scene.add(s); clouds.push(s);
+  }
+  const off = new THREE.Vector3(); let lastT = null;
+  const presets = {
+    day: { top: [.13, .32, .66], hor: [.78, .86, .95], bot: [.62, .68, .76], cloud: [1, 1, 1], sun: [1, .95, .86], fog: [.78, .86, .95] },
+    dusk: { top: [.04, .07, .18], hor: [.95, .52, .32], bot: [.32, .25, .32], cloud: [.95, .7, .62], sun: [1, .62, .4], fog: [.7, .45, .38] },
+    night: { top: [.01, .015, .04], hor: [.08, .1, .18], bot: [.04, .05, .08], cloud: [.25, .28, .36], sun: [.4, .5, .8], fog: [.08, .1, .16] },
+  };
+  function update(t, o) {
+    const dt = lastT === null ? 0 : clamp(t - lastT, 0, .1); lastT = t;
+    const p = presets[o.mode || 'day'];
+    U.top.value.set(...p.top); U.hor.value.set(...p.hor); U.bot.value.set(...p.bot);
+    scene.fog.color.setRGB(...p.fog, THREE.SRGBColorSpace);
+    sun.color.setRGB(...p.sun, THREE.SRGBColorSpace); sun.intensity = o.mode === 'night' ? .6 : 3;
+    hemi.intensity = o.mode === 'night' ? .4 : 1.6;
+    off.x -= (o.speed ?? 90) * dt;
+    for (const s of clouds) {
+      const b = s.userData.base; s.position.set(wrap(b.x + off.x, -700, 700), b.y, b.z);
+      s.material.color.setRGB(...p.cloud, THREE.SRGBColorSpace);
+    }
+    jet.group.position.set(0, Math.sin(t * .7) * .4, 0);
+    jet.group.rotation.set(Math.sin(t * .5) * .03, 0, Math.sin(t * .6) * .015 + (o.pitch || 0));
+    jet.blink(t, o.mode === 'night' ? 1 : .5);
+    const c = o.cam;
+    cam.position.set(c.dist * Math.cos(c.el) * Math.cos(c.az), c.dist * Math.sin(c.el), c.dist * Math.cos(c.el) * Math.sin(c.az));
+    if (c.off) cam.position.add(c.off);
+    cam.fov = c.fov || 38; if (c.shift || c.shiftY) cam.setViewOffset(W, H, -(c.shift || 0), c.shiftY || 0, W, H); else cam.clearViewOffset(); cam.updateProjectionMatrix();
+    jet.group.visible = o.hideJet ? false : true;
+    cam.lookAt(c.look || new THREE.Vector3(0, 0, 0));
+    renderer.render(scene, cam);
+  }
+  return { scene, cam, jet, update };
+}
+
+/* =====================================================================
+   WORLD: MAP (Gulf of Mexico / Florida / Bahamas)
+   ===================================================================== */
+function makeMap() {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x050b14);
+  scene.fog = new THREE.Fog(0x050b14, 18, 45);
+  scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x05080f, 1.4));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(-5, 10, 6); scene.add(dl);
+  const ll = (lon, lat, y = 0) => new THREE.Vector3((lon + 86), y, -(lat - 27));
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(120, 80), new THREE.MeshStandardMaterial({ color: 0x07182b, roughness: .9 }));
+  ocean.rotation.x = -Math.PI / 2; ocean.position.y = -.02; scene.add(ocean);
+  // graticule
+  const gp = [];
+  for (let lon = -110; lon <= -60; lon += 2) gp.push(...ll(lon, 10).toArray(), ...ll(lon, 45).toArray());
+  for (let lat = 10; lat <= 45; lat += 2) gp.push(...ll(-110, lat).toArray(), ...ll(-60, lat).toArray());
+  const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
+  const grid = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: 0x1b3a5c, transparent: true, opacity: .55 })); grid.position.y = .005; scene.add(grid);
+  const polys = [
+    [[-110, 16], [-96.4, 18.7], [-96.1, 19.4], [-96.6, 20.2], [-97.2, 20.7], [-97.7, 21.8], [-97.8, 22.8], [-97.6, 24.3], [-97.4, 25.4], [-97.2, 25.95], [-97.4, 26.8], [-97.3, 27.6], [-96.8, 28.2], [-95.9, 28.6], [-95.0, 29.2], [-94.7, 29.4], [-93.8, 29.7], [-93.0, 29.75], [-92.2, 29.55], [-91.3, 29.3], [-90.6, 29.1], [-90.0, 29.15], [-89.4, 28.95], [-89.2, 29.3], [-89.6, 29.7], [-89.5, 30.1], [-89.0, 30.35], [-88.4, 30.38], [-88.0, 30.25], [-87.5, 30.32], [-86.6, 30.4], [-86.0, 30.25], [-85.5, 29.95], [-85.1, 29.65], [-84.6, 29.85], [-84.1, 30.05], [-83.7, 29.9], [-83.2, 29.4], [-82.8, 29.0], [-82.75, 28.4], [-82.85, 27.9], [-82.65, 27.45], [-82.4, 27.0], [-82.15, 26.65], [-81.85, 26.3], [-81.75, 25.9], [-81.4, 25.6], [-81.1, 25.25], [-80.6, 25.15], [-80.35, 25.35], [-80.25, 25.75], [-80.1, 26.3], [-80.04, 26.8], [-80.15, 27.3], [-80.35, 27.85], [-80.6, 28.4], [-80.6, 28.65], [-80.85, 29.1], [-81.15, 29.7], [-81.35, 30.3], [-81.4, 30.75], [-81.25, 31.4], [-80.95, 31.95], [-80.5, 32.4], [-79.9, 32.8], [-79.2, 33.3], [-78.6, 33.85], [-77.9, 34.0], [-77.3, 34.6], [-76.5, 34.75], [-75.6, 35.3], [-75.8, 36.2], [-76.0, 37.0], [-75.7, 38.0], [-75.0, 38.8], [-74, 44], [-110, 44]],
+    [[-84.95, 21.85], [-84.0, 22.65], [-83.2, 22.95], [-82.5, 23.1], [-81.6, 23.15], [-80.6, 23.05], [-79.6, 22.6], [-78.6, 22.35], [-77.6, 21.85], [-76.5, 21.2], [-75.6, 21.1], [-74.6, 20.6], [-74.15, 20.25], [-74.5, 20.0], [-75.7, 19.9], [-77.4, 19.85], [-77.6, 20.4], [-78.4, 21.4], [-79.5, 21.6], [-80.5, 21.8], [-81.5, 22.2], [-82.2, 22.4], [-83.4, 22.2], [-84.3, 21.9]],
+    [[-79.0, 26.7], [-78.2, 26.75], [-77.9, 26.6], [-78.6, 26.5]],
+    [[-77.4, 27.0], [-77.0, 26.6], [-77.2, 25.9], [-77.4, 26.2], [-77.6, 26.8]],
+    [[-78.3, 25.2], [-77.7, 25.0], [-77.6, 24.2], [-77.9, 23.8], [-78.4, 24.4]],
+    [[-77.55, 25.08], [-77.25, 25.08], [-77.3, 24.98], [-77.55, 24.98]],
+    [[-76.75, 25.55], [-76.55, 25.5], [-76.3, 25.1], [-76.15, 24.7], [-76.25, 24.65], [-76.45, 25.0], [-76.65, 25.35], [-76.8, 25.5]],
+    [[-76.8, 24.6], [-76.6, 24.5], [-76.0, 23.6], [-75.9, 23.65], [-76.5, 24.4]],
+  ];
+  const landMat = new THREE.MeshStandardMaterial({ color: 0x1a2a3e, roughness: .85, metalness: .05 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x5cd6ff, transparent: true, opacity: .55 });
+  for (const p of polys) {
+    const sh = new THREE.Shape(p.map(([lo, la]) => new THREE.Vector2(lo + 86, la - 27)));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: .12, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+    scene.add(new THREE.Mesh(geo, landMat));
+    const ep = p.concat([p[0]]).map(([lo, la]) => ll(lo, la, .125));
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ep), edgeMat));
+  }
+  const routeLL = [[-97.74, 30.27, .13], [-95.2, 29.7, .5], [-91, 28.6, .62], [-87, 27.4, .65], [-84, 26.7, .65], [-81.8, 26.15, .64], [-80.9, 26.4, .55], [-80.13, 26.62, .13]];
+  const curve = new THREE.CatmullRomCurve3(routeLL.map(([a, b, y]) => ll(a, b, y)), false, 'centripetal');
+  const tube = new THREE.TubeGeometry(curve, 300, .045, 10, false);
+  const route = new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: 0xffb547 })); scene.add(route);
+  const tubeIdx = tube.index.count;
+  const plan = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.CatmullRomCurve3([ll(-80.13, 26.62, .13), ll(-78.5, 26.1, .45), ll(-76.7, 25.47, .13)]).getPoints(60)),
+    new THREE.LineDashedMaterial({ color: 0x9fb3cc, dashSize: .12, gapSize: .1, transparent: true, opacity: 0 }));
+  plan.computeLineDistances(); scene.add(plan);
+  const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT_TEX, color: 0xffd28a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); head.scale.set(.6, .6, 1); scene.add(head);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4d5e, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+  const rings = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.RingGeometry(.9, 1, 64), ringMat.clone()); m.rotation.x = -Math.PI / 2; m.position.copy(ll(-80.13, 26.62, .14)); scene.add(m); return m; });
+  const dots = [[-97.74, 30.27], [-81.79, 26.14], [-76.70, 25.47]].map(([a, b]) => { const m = new THREE.Mesh(new THREE.CircleGeometry(.09, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })); m.rotation.x = -Math.PI / 2; m.position.copy(ll(a, b, .13)); scene.add(m); return m; });
+  const cam = new THREE.PerspectiveCamera(35, W / H, .1, 200);
+  function update(t, o) {
+    route.geometry.setDrawRange(0, Math.floor(tubeIdx * clamp(o.prog) / 6) * 6);
+    head.position.copy(curve.getPointAt(clamp(o.prog))); head.material.opacity = o.prog > 0 && o.prog < 1 ? 1 : 0;
+    plan.material.opacity = o.plan || 0;
+    rings.forEach((m, i) => { const ph = ((t * .6 + i / 3) % 1); const s = .1 + ph * .9; m.scale.set(s, s, s); m.material.opacity = (1 - ph) * (o.crash || 0); });
+    cam.position.copy(o.camPos); cam.lookAt(o.camTarget);
+    renderer.render(scene, cam);
+  }
+  return { scene, cam, ll, update };
+}
+
+/* =====================================================================
+   WORLD: CUMULONIMBUS (1 unit = 1 km)
+   ===================================================================== */
+function makeCB() {
+  const scene = new THREE.Scene(); const bg = new THREE.Color(0x1d2c42); scene.background = bg;
+  scene.fog = new THREE.Fog(bg, 50, 150);
+  scene.add(new THREE.HemisphereLight(0xc6d6f0, 0x0b1420, 1.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(20, 40, 30); scene.add(sun);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: 0x0a1a2c, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const grid = new THREE.GridHelper(300, 100, 0x234466, 0x16304c); grid.position.y = .01; scene.add(grid);
+  const r = rng(5), cl = [];
+  const addC = (x, y, z, sc, op) => {
+    const m = new THREE.SpriteMaterial({ map: CLOUD_TEX[cl.length % 3], transparent: true, opacity: op, depthWrite: false });
+    const s = new THREE.Sprite(m); s.position.set(x, y, z); s.scale.set(sc, sc * .85, 1);
+    const sh = .38 + .55 * clamp(y / 14); s.userData = { h: y, col: new THREE.Color(sh * .95, sh * .98, sh * 1.05), op };
+    scene.add(s); cl.push(s);
+  };
+  for (let i = 0; i < 280; i++) { const h = 1 + r() * 10.5, rad = 2.4 + .7 * Math.sin(h * 1.3) + h * .1, a = r() * 6.283, d = Math.sqrt(r()) * rad; addC(Math.cos(a) * d, h, Math.sin(a) * d, 2.6 + r() * 3, .5); }
+  for (let i = 0; i < 230; i++) { const x = -5 + r() * 24, spread = 4 + (x + 5) * .4, h = 10.6 + r() * (1.6 + (x < 3 ? .8 : 0)); addC(x, h, (r() - .5) * spread * 1.4, 3 + r() * 3.5, .45); }
+  for (let i = 0; i < 26; i++) { const a = r() * 6.283, d = r() * 2; addC(Math.cos(a) * d, 12.6 + r() * 1.2, Math.sin(a) * d, 2.5 + r() * 1.5, .5); }
+  for (let i = 0; i < 60; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * 6; addC(Math.cos(a) * d, .9 + r() * .8, Math.sin(a) * d, 3 + r() * 2, .55); }
+  // updraft particles
+  const NP = 1800, pp = new Float32Array(NP * 3), pc = new Float32Array(NP * 3), pb = [];
+  for (let i = 0; i < NP; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * 2.1; pb.push({ x: Math.cos(a) * d, z: Math.sin(a) * d, y0: r() * 12, v: (1.4 + r() * 1.6) * (1.2 - d / 2.1 * .5), dir: r() }); }
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pp, 3)); pg.setAttribute('color', new THREE.BufferAttribute(pc, 3));
+  const pts = new THREE.Points(pg, new THREE.PointsMaterial({ size: .2, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+  pts.renderOrder = 10; scene.add(pts);
+  const mkPlane = (y, col, op) => {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(19, 96), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.y = y; scene.add(m);
+    const e = new THREE.Mesh(new THREE.RingGeometry(18.85, 19, 96), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
+    e.rotation.x = -Math.PI / 2; e.position.y = y; scene.add(e); return [m, e];
+  };
+  const fz = mkPlane(4.6, 0x5cd6ff, .1), f40 = mkPlane(10.0, 0xffffff, .06);
+  // altitude ruler + FL350 line
+  const rul = []; rul.push(-17, 0, 9, -17, 14, 9); for (let h = 0; h <= 14; h += 2) rul.push(-17, h, 9, -16.4, h, 9);
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rul, 3));
+  scene.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .6 })));
+  const fl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-30, 10.7, 0), new THREE.Vector3(14, 10.7, 0)]), new THREE.LineDashedMaterial({ color: 0xffb547, dashSize: .5, gapSize: .35, transparent: true, opacity: 0 }));
+  fl.computeLineDistances(); scene.add(fl);
+  const jet = makeJet(); jet.group.scale.setScalar(.11); scene.add(jet.group);
+  const cam = new THREE.PerspectiveCamera(40, W / H, .1, 600);
+  function update(t, lt, o) {
+    const grow = o.grow ?? 1, fla = o.flash || 0;
+    for (const s of cl) {
+      const vis = ss(s.userData.h - .8, s.userData.h + .2, grow * 14.5);
+      s.material.opacity = s.userData.op * vis * (o.cloudK ?? 1);
+      s.material.color.copy(s.userData.col).multiplyScalar(1 + fla * 1.6);
+    }
+    const pk = o.parts || 0;
+    for (let i = 0; i < NP; i++) {
+      const b = pb[i]; const y = .3 + wrap(b.y0 + b.v * lt, 0, 12.4);
+      const out = Math.max(0, y - 10.3); const x = b.x + out * (1.5 + b.dir * 5), z = b.z + out * (b.dir - .5) * 2;
+      pp[i * 3] = x; pp[i * 3 + 1] = y; pp[i * 3 + 2] = z;
+      let c;
+      if (y < 4.6) c = [.25, .5, 1]; else if (y < 10) c = [.35, 1, 1]; else c = [.95, .97, 1];
+      const k = pk * (o.phase ? (y >= 4.6 && y < 10 ? 1.4 : .45) : 1) * ss(.3, 1, y) * .85;
+      pc[i * 3] = c[0] * k; pc[i * 3 + 1] = c[1] * k; pc[i * 3 + 2] = c[2] * k;
+    }
+    pg.attributes.position.needsUpdate = true; pg.attributes.color.needsUpdate = true;
+    fz[0].material.opacity = .1 * (o.planes || 0); fz[1].material.opacity = .8 * (o.planes || 0);
+    f40[0].material.opacity = .05 * (o.planes || 0); f40[1].material.opacity = .4 * (o.planes || 0);
+    fl.material.opacity = .9 * (o.flLine || 0);
+    const jx = o.jetX ?? -26; jet.group.position.set(jx, 10.7, 0); jet.group.visible = (o.jetK ?? 1) > 0; jet.blink(t);
+    const c = o.cam; cam.position.set(Math.cos(c.az) * c.dist, c.h, Math.sin(c.az) * c.dist); cam.lookAt(c.look);
+    renderer.render(scene, cam);
+  }
+  return { scene, cam, update };
+}
+
+/* =====================================================================
+   WORLD: AIRFOIL — exact potential flow around a Joukowski airfoil
+   ===================================================================== */
+const cx = (re, im) => ({ re, im });
+const cadd = (a, b) => cx(a.re + b.re, a.im + b.im), csub = (a, b) => cx(a.re - b.re, a.im - b.im);
+const cmul = (a, b) => cx(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+const cdiv = (a, b) => { const d = b.re * b.re + b.im * b.im; return cx((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d); };
+const cexpi = th => cx(Math.cos(th), Math.sin(th));
+const csqrt = a => { const r = Math.hypot(a.re, a.im); let re = Math.sqrt((r + a.re) / 2), im = Math.sqrt(Math.max(0, (r - a.re) / 2)); if (a.im < 0) im = -im; return cx(re, im); };
+const cabs2 = a => a.re * a.re + a.im * a.im;
+
+function makeAirfoil() {
+  const Z0 = cx(-0.09, 0.075), Rr = Math.hypot(1 - Z0.re, Z0.im), beta = Math.atan2(Z0.im, 1 - Z0.re);
+  const ALPHA = 6 * Math.PI / 180, U = 1;
+  const rot = cexpi(-ALPHA), rotInv = cexpi(ALPHA);
+  const Jk = z => cadd(z, cdiv(cx(1, 0), z));
+  const dJ = z => csub(cx(1, 0), cdiv(cx(1, 0), cmul(z, z)));
+  const toD = zeta => cmul(Jk(zeta), rot);
+  function Wf(z, G) {
+    const zp = csub(z, Z0);
+    const t1 = cexpi(-ALPHA);
+    const t2 = cdiv(cmul(cx(U * Rr * Rr, 0), cexpi(ALPHA)), cmul(zp, zp));
+    const t3 = cdiv(cx(0, G / (2 * Math.PI)), zp);
+    return cadd(csub(t1, t2), t3);
+  }
+  const G0 = 4 * Math.PI * U * Rr * Math.sin(ALPHA + beta);
+  function streamline(yd, G) {
+    const zd = cx(-6.5, yd); const z = cmul(zd, rotInv); const s = csqrt(csub(cmul(z, z), cx(4, 0)));
+    let zeta = cmul(cadd(z, s), cx(.5, 0)); if (Math.hypot(zeta.re - Z0.re, zeta.im - Z0.im) < Rr) zeta = cmul(csub(z, s), cx(.5, 0));
+    const out = []; const dt = .004;
+    const vel = q => { const w = Wf(q, G), j = dJ(q); const d = Math.max(cabs2(j), 2e-3); return cx(w.re / d, -w.im / d); };
+    for (let k = 0; k < 6000; k++) {
+      if (k % 5 === 0) { const p = toD(zeta); out.push([p.re, p.im]); if (p.re > 7) break; }
+      const v1 = vel(zeta), mid = cadd(zeta, cmul(v1, cx(dt / 2, 0))), v2 = vel(mid);
+      zeta = cadd(zeta, cmul(v2, cx(dt, 0)));
+      const dz = Math.hypot(zeta.re - Z0.re, zeta.im - Z0.im); if (dz < Rr * 1.0005) { const k2 = Rr * 1.0005 / dz; zeta = cx(Z0.re + (zeta.re - Z0.re) * k2, Z0.im + (zeta.im - Z0.im) * k2); }
+    }
+    return out; // sampled every 0.02 flow-time units
+  }
+  // profile
+  const prof = []; const N = 220;
+  for (let i = 0; i <= N; i++) { const th = -beta + i / N * Math.PI * 2; const p = toD(cadd(Z0, cmul(cx(Rr, 0), cexpi(th)))); prof.push([p.re, p.im, th]); }
+  let leI = 0; prof.forEach((p, i) => { if (p[0] < prof[leI][0]) leI = i; });
+  const upper = prof.slice(0, leI + 1).map(p => [p[0], p[1]]).sort((a, b) => a[0] - b[0]);
+  const lower = prof.slice(leI).map(p => [p[0], p[1]]).sort((a, b) => a[0] - b[0]);
+  const interp = (arr, x) => { if (x <= arr[0][0]) return arr[0][1]; for (let i = 1; i < arr.length; i++) if (arr[i][0] >= x) { const a = arr[i - 1], b = arr[i]; return lerp(a[1], b[1], (x - a[0]) / (b[0] - a[0] || 1)); } return arr[arr.length - 1][1]; };
+  const yU = x => interp(upper, x), yL = x => interp(lower, x);
+  const xLE = prof[leI][0], xTE = prof[0][0];
+  const front = prof.filter(p => p[0] < xLE + .25).map(p => [p[1], p[0]]).sort((a, b) => a[0] - b[0]); // (y -> x)
+  const frontX = y => interp(front, y);
+
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x060a12);
+  scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x10141c, 1.3));
+  const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(-3, 6, 5); scene.add(dl);
+  const rim = new THREE.DirectionalLight(0x5cd6ff, 1.2); rim.position.set(4, -2, -6); scene.add(rim);
+  const SPAN = 7;
+  const shape = new THREE.Shape(prof.map(p => new THREE.Vector2(p[0], p[1])));
+  const ag = new THREE.ExtrudeGeometry(shape, { depth: SPAN, bevelEnabled: false, curveSegments: 1 }); ag.translate(0, 0, -SPAN);
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x9aa7b8, metalness: .55, roughness: .35, emissive: 0x000000 });
+  const wing = new THREE.Mesh(ag, wingMat); scene.add(wing);
+  const faceLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(prof.map(p => new THREE.Vector3(p[0], p[1], .01))), new THREE.LineBasicMaterial({ color: 0x5cd6ff }));
+  scene.add(faceLine);
+  // grid backdrop
+  const gp = []; for (let x = -8; x <= 8; x += .5) gp.push(x, -4, -SPAN - .2, x, 4, -SPAN - .2); for (let y = -4; y <= 4; y += .5) gp.push(-8, y, -SPAN - .2, 8, y, -SPAN - .2);
+  const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
+  scene.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: 0x14243a })));
+
+  // streamlines
+  const seeds = [-2.6, -2.05, -1.6, -1.22, -.92, -.68, -.48, -.3, -.15, -.03, .08, .2, .34, .5, .68, .9, 1.18, 1.55, 2.0, 2.6];
+  const SL = seeds.map(y => ({ y, clean: streamline(y, G0), iced: streamline(y, G0 * .58) }));
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x5cd6ff, transparent: true, opacity: .16 });
+  const lineObjs = SL.map(s => { const geo = new THREE.BufferGeometry(); const arr = new Float32Array(s.clean.length * 3); geo.setAttribute('position', new THREE.BufferAttribute(arr, 3)); const l = new THREE.Line(geo, lineMat); scene.add(l); return { l, arr }; });
+  const MP = 11, TR = 8, NPT = SL.length * MP * TR;
+  const ppos = new Float32Array(NPT * 3), pcol = new Float32Array(NPT * 3);
+  const pgeo = new THREE.BufferGeometry(); pgeo.setAttribute('position', new THREE.BufferAttribute(ppos, 3)); pgeo.setAttribute('color', new THREE.BufferAttribute(pcol, 3));
+  const pts = new THREE.Points(pgeo, new THREE.PointsMaterial({ size: .09, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(pts);
+  // droplets
+  const ND = 70, dpos = new Float32Array(ND * 3), dcol = new Float32Array(ND * 3); const dr = rng(44);
+  const drops = Array.from({ length: ND }, (_, i) => ({ y: -.12 + (dr() - .5) * .5, ts: i * .085 + dr() * .05, z: .03 }));
+  const dgeo = new THREE.BufferGeometry(); dgeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3)); dgeo.setAttribute('color', new THREE.BufferAttribute(dcol, 3));
+  const dpts = new THREE.Points(dgeo, new THREE.PointsMaterial({ size: .13, map: DOT_TEX, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(dpts);
+  // ice
+  const iceMat = new THREE.MeshPhysicalMaterial({ color: 0xe6f6ff, roughness: .15, metalness: 0, transparent: true, opacity: .88, clearcoat: 1, emissive: 0x16303f });
+  let iceMesh = null, iceLevel = -1;
+  const thLE = prof[leI][2];
+  function buildIce(k) {
+    if (iceMesh) { scene.remove(iceMesh); iceMesh.geometry.dispose(); iceMesh = null; }
+    if (k < .02) return;
+    const outer = [], inner = [];
+    for (let i = 1; i < prof.length - 1; i++) {
+      const d0 = prof[i][2] - thLE; if (Math.abs(d0) > .95) continue;
+      const a = prof[i - 1], b = prof[i + 1]; let nx = b[1] - a[1], ny = -(b[0] - a[0]); const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
+      if (nx * (prof[i][0] - (-.1)) + ny * (prof[i][1]) < 0) { nx = -nx; ny = -ny; }
+      const w = ss(.95, .55, Math.abs(d0));
+      const d = k * .2 * w * (.32 + 1.0 * Math.exp(-(((d0 + .42) / .13) ** 2)) + .75 * Math.exp(-(((d0 - .4) / .13) ** 2)) + .08 * Math.sin(i * 2.3));
+      outer.push(new THREE.Vector2(prof[i][0] + nx * d, prof[i][1] + ny * d)); inner.push(new THREE.Vector2(prof[i][0] - nx * .005, prof[i][1] - ny * .005));
+    }
+    const sh = new THREE.Shape(outer.concat(inner.reverse()));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: SPAN, bevelEnabled: false }); geo.translate(0, 0, -SPAN + .0);
+    iceMesh = new THREE.Mesh(geo, iceMat); scene.add(iceMesh);
+  }
+  // shock + supersonic pocket
+  const shockTex = (() => { const c = document.createElement('canvas'); c.width = 4; c.height = 128; const x = c.getContext('2d'); const gr = x.createLinearGradient(0, 128, 0, 0); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 4, 128); return new THREE.CanvasTexture(c); })();
+  const shockMat = new THREE.MeshBasicMaterial({ map: shockTex, color: 0xfff1c9, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const shockSheet = new THREE.Mesh(new THREE.PlaneGeometry(SPAN, .9), shockMat); shockSheet.rotation.y = Math.PI / 2; scene.add(shockSheet);
+  const shockFace = new THREE.Mesh(new THREE.PlaneGeometry(.05, .9), shockMat.clone()); scene.add(shockFace);
+  const pocketMat = new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+  let pocket = null;
+  function buildPocket(xs) {
+    if (pocket) { scene.remove(pocket); pocket.geometry.dispose(); }
+    const pts2 = []; const x0 = xLE + .55;
+    for (let i = 0; i <= 30; i++) { const x = lerp(x0, xs, i / 30); pts2.push(new THREE.Vector2(x, yU(x) + .01)); }
+    for (let i = 30; i >= 0; i--) { const x = lerp(x0, xs, i / 30); const u = i / 30; pts2.push(new THREE.Vector2(x, yU(x) + .02 + .62 * Math.pow(Math.sin(Math.PI * Math.pow(u, .7)), .8) * (u < .98 ? 1 : 0))); }
+    pocket = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(pts2)), pocketMat); pocket.position.z = .02; scene.add(pocket);
+  }
+  const cam = new THREE.PerspectiveCamera(30, W / H, .1, 100);
+  const getP = (arr, idx) => arr[Math.min(arr.length - 1, Math.max(0, idx))];
+  let lastPocket = null;
+  function update(t, lt, o) {
+    const ice = o.ice || 0, sep = o.sep ?? ice;
+    const ik = Math.round(ice * 30) / 30; if (ik !== iceLevel) { buildIce(ik); iceLevel = ik; }
+    const flowK = o.flowK ?? 1;
+    lineMat.opacity = .16 * flowK;
+    SL.forEach((s, li) => {
+      const L = lineObjs[li]; const n = Math.min(s.clean.length, L.arr.length / 3);
+      for (let i = 0; i < n; i++) { const a = s.clean[i], b = getP(s.iced, i); L.arr[i * 3] = lerp(a[0], b[0], ice * .6); L.arr[i * 3 + 1] = lerp(a[1], b[1], ice * .6); L.arr[i * 3 + 2] = .02; }
+      L.l.geometry.attributes.position.needsUpdate = true; L.l.geometry.setDrawRange(0, n);
+    });
+    let k = 0; const ft = lt * 1.5;
+    SL.forEach((s, li) => {
+      const Lc = s.clean.length, Tl = Lc * .02;
+      for (let j = 0; j < MP; j++) {
+        const tau0 = wrap(ft + j * Tl / MP + li * .37, 0, Tl);
+        for (let q = 0; q < TR; q++) {
+          const tau = tau0 - q * .035; const idx = Math.floor(tau / .02);
+          let x, y, br = (1 - q / TR) * flowK;
+          if (tau < 0) { x = 0; y = 0; br = 0; }
+          else {
+            const a = getP(s.clean, idx), b = getP(s.iced, idx);
+            x = lerp(a[0], b[0], ice * .6); y = lerp(a[1], b[1], ice * .6);
+            if (sep > 0 && x > xLE + .5) {
+              const above = y > (yU(clamp(x, xLE, xTE)) - .03) && s.y > -.1;
+              if (above) {
+                const dy = Math.max(0, y - (x < xTE ? yU(x) : yU(xTE)));
+                const amp = sep * ss(xLE + .5, xLE + 1.6, x) * Math.exp(-dy / .75) * .42;
+                const tt = lt * 1.0;
+                const nX = Math.sin(x * 3.1 - tt * 4.3 + y * 2.0) * .5 + Math.sin(x * 6.7 - tt * 6.1 + li) * .3;
+                const nY = Math.sin(x * 4.3 - tt * 5.3 + y * 3.1 + li * .7) * .6 + Math.sin(x * 8.1 + tt * 3.7) * .25;
+                x += nX * amp * .5; y += nY * amp;
+                if (x > xLE && x < xTE) y = Math.max(y, yU(x) + .03);
+                br *= 1 - sep * .25;
+              }
+            }
+          }
+          ppos[k * 3] = x; ppos[k * 3 + 1] = y; ppos[k * 3 + 2] = .03;
+          const hot = o.speedCol ? clamp((Math.hypot(...[getP(s.clean, idx + 1)[0] - getP(s.clean, idx)[0], getP(s.clean, idx + 1)[1] - getP(s.clean, idx)[1]]) / .02 - .7) / .9) : 0;
+          pcol[k * 3] = br * lerp(.36, 1, hot); pcol[k * 3 + 1] = br * lerp(.84, .7, hot); pcol[k * 3 + 2] = br * lerp(1, .3, hot);
+          k++;
+        }
+      }
+    });
+    pgeo.attributes.position.needsUpdate = true; pgeo.attributes.color.needsUpdate = true;
+    // droplets
+    const dk = o.drops || 0;
+    drops.forEach((d, i) => {
+      const xs = frontX(d.y) - .03; const tt = (o.dropT ?? 0) - d.ts;
+      let x = -7 + tt * 4.2, stuck = false; if (x >= xs) { x = xs; stuck = true; }
+      const vis = tt > 0 ? dk : 0;
+      dpos[i * 3] = x; dpos[i * 3 + 1] = d.y + (stuck ? 0 : Math.sin(tt * 3 + i) * .01); dpos[i * 3 + 2] = .04;
+      const c = stuck ? [1, 1, 1] : [.3, .6, 1];
+      dcol[i * 3] = c[0] * vis; dcol[i * 3 + 1] = c[1] * vis; dcol[i * 3 + 2] = c[2] * vis;
+    });
+    dgeo.attributes.position.needsUpdate = true; dgeo.attributes.color.needsUpdate = true;
+    // shock
+    const sk = o.shock || 0, sx = o.shockX ?? .2;
+    shockSheet.position.set(sx, yU(sx) + .45, -SPAN / 2); shockFace.position.set(sx, yU(sx) + .45, .03);
+    shockMat.opacity = sk * .55; shockFace.material.opacity = sk;
+    if (sk > 0) { const key = Math.round(sx * 100); if (key !== lastPocket) { buildPocket(sx); lastPocket = key; } }
+    pocketMat.opacity = sk * .28;
+    wingMat.emissive.setRGB(o.stress ? .55 * o.stress : 0, 0, 0);
+    const c = o.cam || {};
+    cam.position.set(...(c.pos || [-2.4, 1.15, 8.6])); cam.fov = c.fov || 30; cam.updateProjectionMatrix();
+    cam.lookAt(new THREE.Vector3(...(c.look || [.1, .05, -1])));
+    renderer.render(scene, cam);
+  }
+  return { scene, cam, update, yU, xLE, xTE, chordPoint: f => { const x = lerp(xLE, xTE, f); return new THREE.Vector3(x, (yU(x) + yL(x)) / 2, .02); }, upperPoint: f => { const x = lerp(xLE, xTE, f); return new THREE.Vector3(x, yU(x), .02); } };
+}
+
+/* =====================================================================
+   BUILD WORLDS
+   ===================================================================== */
+const storm = makeStorm(), sky = makeSky(), map = makeMap(), cb = makeCB(), foil = makeAirfoil();
+
+/* radar storm image (2D) */
+const radarImg = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 420; const x = c.getContext('2d'); const id = x.createImageData(420, 420); const r = rng(77);
+  const blobs = Array.from({ length: 14 }, () => [210 + (r() - .5) * 150, 210 + (r() - .5) * 120, 30 + r() * 60, .5 + r() * .7]);
+  for (let j = 0; j < 420; j++) for (let i = 0; i < 420; i++) {
+    let v = 0; for (const b of blobs) { const d2 = ((i - b[0]) ** 2 + (j - b[1]) ** 2) / (b[2] * b[2]); v += b[3] * Math.exp(-d2); }
+    v += .12 * Math.sin(i * .09 + Math.sin(j * .05) * 2) * Math.sin(j * .08 + Math.sin(i * .04) * 3);
+    let col = null;
+    if (v > 2.1) col = [200, 40, 200]; else if (v > 1.45) col = [255, 40, 50]; else if (v > 1.05) col = [255, 170, 30]; else if (v > .72) col = [250, 240, 40]; else if (v > .35) col = [40, 200, 70]; else if (v > .2) col = [20, 110, 50];
+    const o = (j * 420 + i) * 4; if (col) { id.data[o] = col[0]; id.data[o + 1] = col[1]; id.data[o + 2] = col[2]; id.data[o + 3] = 215; }
+  }
+  x.putImageData(id, 0, 0); return c;
+})();
+const stars = (() => { const r = rng(9); return Array.from({ length: 420 }, () => [r() * W, r() * H * .85, r() * 1.6 + .3, r()]); })();
+
+/* =====================================================================
+   TIMELINE
+   ===================================================================== */
+const DATA = await (await fetch('script.json')).json();
+const CPS = 14.5, LEAD = .5, TAIL = 1.1;
+let SC = [], TOTAL = 0, STRIKES = [];
+function setup(timings) {
+  SC = []; TOTAL = 0;
+  DATA.scenes.forEach((s, i) => {
+    const sents = s.text.split(/(?<=[.!?])\s+/);
+    let st = [], speech;
+    const tm = timings && timings.scenes && timings.scenes[i];
+    if (tm && tm.sentence_starts && tm.sentence_starts.length === sents.length) { st = tm.sentence_starts.map(v => LEAD + v); speech = tm.duration; }
+    else { let c = 0; sents.forEach(x => { st.push(LEAD + c / CPS); c += x.length + 1; }); speech = s.text.length / CPS; }
+    const dur = LEAD + speech + TAIL;
+    const S = k => st[clamp(k, 0, st.length - 1)], E = k => k + 1 < st.length ? st[k + 1] : LEAD + speech;
+    SC.push({ ...s, idx: i, start: TOTAL, dur, st, sents, S, E, speech }); TOTAL += dur;
+  });
+  const get = id => SC.find(s => s.id === id);
+  const h = get('hook'), st = get('storm'), dv = get('dive');
+  STRIKES = [];
+  [1.2, 5.4, h.S(2) + .6, h.S(3) + 1.5].forEach(v => STRIKES.push(h.start + v));
+  [1.6, st.S(1) - 1.2].forEach(v => STRIKES.push(st.start + v));
+  [st.S(2) + 1.0, st.S(3) + 2.2].forEach(v => STRIKES.push(st.start + v));
+  [dv.S(0) + 1.4, dv.S(1) + 1.6, dv.S(2) + 2.0, dv.S(3) + 2.4, dv.S(7) + 1.0].forEach(v => STRIKES.push(dv.start + v));
+  STRIKES.sort((a, b) => a - b);
+  return { total: TOTAL, fps: 30, scenes: SC.map(s => ({ id: s.id, start: s.start, dur: s.dur, lead: LEAD, speech: s.speech, sentence_starts: s.st })), strikes: STRIKES };
+}
+function flashAt(t) {
+  let f = 0; for (const s of STRIKES) { const d = t - s; if (d >= 0 && d < 1.2) f = Math.max(f, Math.exp(-d * 5) * (.6 + .4 * Math.abs(Math.sin(d * 55))) + (d > .12 && d < .2 ? .6 : 0)); }
+  return clamp(f);
+}
+
+/* =====================================================================
+   COMMON OVERLAY PIECES
+   ===================================================================== */
+let BLACK = 0;
+function vignette(k = 1) {
+  const gr = g.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * .95);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${.62 * k})`); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+}
+function dim(a) { if (a > 0) { g.fillStyle = `rgba(3,6,12,${a})`; g.fillRect(0, 0, W, H); } }
+function chapterTag(sc, lt) {
+  const a = win(lt, .2, sc.dur - .1, .6, .3);
+  g.save(); g.globalAlpha = a; g.fillStyle = AMBER; g.fillRect(80, 66, 6, 34); g.restore();
+  T(sc.chapter, 104, 93, { s: 26, w: 700, ls: 4, a });
+}
+function disclaimer(a) { T('RECONSTITUIÇÃO ILUSTRATIVA · INVESTIGAÇÃO DO NTSB EM CURSO', W - 80, 93, { s: 17, w: 600, ls: 2.5, al: 'right', c: 'rgba(255,255,255,.62)', a }); }
+function progressBar(t) {
+  g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(0, H - 6, W, 6);
+  g.fillStyle = AMBER; g.fillRect(0, H - 6, W * t / TOTAL, 6);
+}
+function card(x, y, w, h, a, label, value, o = {}) {
+  const yy = y + (1 - a) * 24;
+  P(x, yy, w, h, a, { accent: o.accent || AMBER });
+  T(label, x + 30, yy + 44, { s: 19, w: 700, ls: 3, c: 'rgba(255,255,255,.66)', a });
+  T(value, x + 30, yy + 44 + (o.vs || 58), { s: o.s || 46, w: o.w || 700, c: o.c || '#fff', a });
+  if (o.sub) T(o.sub, x + 30, yy + h - 28, { s: 21, w: 500, c: 'rgba(255,255,255,.75)', a });
+}
+function bigTitle(lines, a, y = 520) {
+  lines.forEach((l, i) => T(l.t, W / 2, y + i * (l.gap || 96), { s: l.s || 88, w: l.w || 800, c: l.c || '#fff', al: 'center', ls: l.ls ?? -1, a: a * (l.a ?? 1), sb: 30 }));
+}
+
+/* =====================================================================
+   SCENES
+   ===================================================================== */
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+const SCENES = {
+  /* ---------------- 01 HOOK ---------------- */
+  hook(lt, sc, t) {
+    const dS = sc.S(1) + .2, dE = sc.E(1) - .1;
+    const dv = eio(seg(lt, dS, dS + 3));
+    const pull = eio(seg(lt, sc.S(2) - .5, sc.S(2) + 3));
+    const fl = flashAt(t);
+    storm.update(t, {
+      pitch: -.78 * dv, roll: .55 * dv, speed: 150 + 140 * dv, turb: .55 + .5 * dv, flash: fl,
+      cam: { dist: lerp(lerp(36, 28, seg(lt, 0, dS)), 74, pull), az: lerp(lerp(2.25, 2.85, seg(lt, 0, dS)), 3.5, pull), el: lerp(.1, .3, dv) + pull * .15, lead: 6, shift: 330 * (1 - pull) }
+    });
+    vignette();
+    dim(pull * .35);
+    // HUD
+    const hud = win(lt, .25, sc.S(2) + .6, .5, .6);
+    const prog = ein(seg(lt, dS, dE));
+    const alt = lerp(35000, 8750, prog), vs = -32000 * ss(dS, dS + 2.5, lt) * (1 - ss(dE - .3, dE + .2, lt) * .0);
+    P(110, 330, 540, 330, hud * .9);
+    T('ALTITUDE', 150, 395, { s: 21, w: 700, ls: 4, c: 'rgba(255,255,255,.7)', a: hud });
+    T(fmt(alt), 150, 500, { s: 104, w: 800, a: hud, c: prog > .02 ? '#fff' : '#fff' });
+    g.font = '800 104px Inter'; T('pés', 150 + g.measureText(fmt(alt)).width + 14, 500, { s: 34, w: 600, c: 'rgba(255,255,255,.6)', a: hud });
+    T('VELOCIDADE VERTICAL', 150, 565, { s: 19, w: 700, ls: 3.5, c: 'rgba(255,255,255,.6)', a: hud });
+    T((vs < -1 ? '−' : '') + fmt(Math.abs(vs)) + ' pés/min', 150, 620, { s: 44, w: 700, c: vs < -5000 ? RED : '#fff', a: hud });
+    // altitude tape
+    const tx = 680, ty0 = 340, ty1 = 650; P(tx - 20, ty0 - 10, 54, ty1 - ty0 + 20, hud * .8, { r: 10 });
+    const yAlt = v => lerp(ty1, ty0, v / 40000);
+    g.save(); g.globalAlpha = hud; g.fillStyle = 'rgba(92,214,255,.25)'; g.fillRect(tx - 8, yAlt(alt), 30, ty1 - yAlt(alt)); g.restore();
+    line([[tx - 12, yAlt(alt)], [tx + 26, yAlt(alt)]], { c: prog > 0 ? RED : CYAN, lw: 4, a: hud, glow: 12 });
+    line([[tx - 12, yAlt(35000)], [tx + 26, yAlt(35000)]], { c: 'rgba(255,255,255,.6)', lw: 2, a: hud });
+    T('35 000', tx + 44, yAlt(35000) + 7, { s: 20, w: 600, a: hud * .8 });
+    T('8 750', tx + 44, yAlt(8750) + 7, { s: 20, w: 600, a: hud * .8 * ss(dE - 1, dE, lt), c: RED });
+    // timer ~ 60 s
+    const tm = win(lt, dS, sc.S(2) + .6, .3, .6);
+    T(`≈ ${Math.round(lerp(0, 63, prog))} s`, 150, 720, { s: 30, w: 700, c: AMBER, a: tm * hud });
+    // title
+    const ta = win(lt, sc.S(2) + .4, sc.dur + 1, .9, .1);
+    T('LEARJET 60  ·  FLÓRIDA  ·  1 NOV 2026', W / 2, 400, { s: 26, w: 700, ls: 7, al: 'center', c: AMBER, a: ta });
+    bigTitle([{ t: '60 SEGUNDOS', s: 150, w: 900, ls: -3 }, { t: 'A FÍSICA DE UMA QUEDA', s: 64, w: 300, ls: 10, gap: 110 }], ta * ss(sc.S(2) + .6, sc.S(2) + 1.6, lt), 560);
+    const w3 = win(lt, sc.S(3), sc.dur + 1, .6, .1);
+    T('O que pode explicar 26 000 pés perdidos num minuto?', W / 2, 820, { s: 34, w: 500, al: 'center', c: 'rgba(255,255,255,.85)', a: w3 });
+    return { flash: fl };
+  },
+
+  /* ---------------- 02 FACTS / MAP ---------------- */
+  facts(lt, sc, t) {
+    const ll = map.ll;
+    const p0 = eio(seg(lt, .3, sc.E(0) - .3)), p1 = eio(seg(lt, sc.S(1) - .2, sc.S(1) + 3.2));
+    const prog = lerp(0, .9, p0) + .1 * eio(seg(lt, sc.S(1) + .8, sc.S(1) + 2.6));
+    const tgtA = ll(-95, 29.2), tgtB = ll(-87.5, 27.6), tgtC = ll(-80.3, 26.5);
+    const target = tgtA.clone().lerp(tgtB, p0).lerp(tgtC, p1);
+    const orbit = lt * .02;
+    const off = V3(Math.sin(orbit) * 2, lerp(lerp(8.5, 13, p0), 3.4, p1), lerp(lerp(7.5, 10.5, p0), 3.0, p1));
+    map.update(t, { prog, plan: ss(sc.S(0) + 3, sc.S(0) + 5, lt) * .75, crash: ss(sc.S(1) + 2.2, sc.S(1) + 3, lt), camPos: target.clone().add(off), camTarget: target });
+    vignette();
+    const labs = [['AUSTIN', -97.74, 30.27, 1, '#fff'], ['NAPLES', -81.79, 26.14, ss(sc.S(0) + 3, sc.S(0) + 4, lt) * (1 - p1 * .6), 'rgba(255,255,255,.8)'], ['GREENACRES', -80.13, 26.62, ss(sc.S(1) + 1.5, sc.S(1) + 2.5, lt), RED], ['NORTH ELEUTHERA', -76.70, 25.47, ss(sc.S(0) + 3.5, sc.S(0) + 4.5, lt), 'rgba(255,255,255,.8)'],
+      ['GOLFO DO MÉXICO', -90.5, 25.8, 1 - p1, 'rgba(92,214,255,.55)'], ['FLÓRIDA', -81.6, 28.3, 1, 'rgba(255,255,255,.4)'], ['BAHAMAS', -77.2, 24.1, 1, 'rgba(255,255,255,.4)'], ['TEXAS', -99, 31.6, 1 - p1, 'rgba(255,255,255,.4)'], ['WEST PALM BEACH', -80.05, 26.72, p1 * ss(sc.S(1) + 2, sc.S(1) + 3, lt), 'rgba(255,255,255,.55)']];
+    for (const [n, lo, la, a, c] of labs) {
+      const [x, y, z] = proj(ll(lo, la, .15), map.cam); if (z > 1) continue;
+      const big = n === 'GREENACRES';
+      const ox = n === 'WEST PALM BEACH' ? 0 : 0, oy = n === 'WEST PALM BEACH' ? -40 : (big ? 60 : -22);
+      T(n, x + ox + 14, y + oy, { s: big ? 32 : (c.includes('.4') || c.includes('.55)') ? 22 : 24), w: big ? 800 : 700, ls: 3, c, a: a * win(lt, .2, sc.dur, .6, .3) });
+    }
+    // cards (right side)
+    const X = 80, Wc = 540, Y0 = 560;
+    const c0 = win(lt, sc.S(0) + .3, sc.S(1) + .2);
+    card(X, Y0, Wc, 150, c0, 'AERONAVE', 'Learjet 60 · N722BD', { s: 40, sub: '' });
+    card(X, Y0 + 170, Wc, 150, c0 * ss(sc.S(0) + 2.5, sc.S(0) + 3.2, lt), 'ROTA', 'Austin → N. Eleuthera', { s: 38, accent: CYAN });
+    const c1 = win(lt, sc.S(1) + .2, sc.S(2) + .3);
+    card(X, Y0, Wc, 150, c1, '1 NOV 2026', '12:49  hora local', { s: 44 });
+    card(X, Y0 + 170, Wc, 150, c1 * ss(sc.S(1) + 2, sc.S(1) + 2.8, lt), 'LOCAL', 'Greenacres, FL', { s: 42, accent: RED, sub: '' });
+    const c2 = win(lt, sc.S(2) + .2, sc.S(3) + .3);
+    card(X, Y0 + 90, Wc, 230, c2, 'VÍTIMAS', '9', { s: 120, vs: 120, accent: RED });
+    for (let i = 0; i < 9; i++) { const a = c2 * ss(sc.S(2) + .3 + i * .12, sc.S(2) + .6 + i * .12, lt); g.save(); g.globalAlpha = a; g.fillStyle = '#fff'; g.beginPath(); g.arc(X + 150 + i * 40, Y0 + 210, 11, 0, 7); g.fill(); g.restore(); }
+    T('todas as pessoas a bordo', X + 150, Y0 + 265, { s: 24, w: 500, c: 'rgba(255,255,255,.75)', a: c2 });
+    const c3 = win(lt, sc.S(3) + .1, sc.dur + 1, .6, .1);
+    dim(c3 * .45);
+    P(W / 2 - 520, 720, 1040, 190, c3, { accent: AMBER });
+    T('COPILOTO', W / 2 - 480, 776, { s: 20, w: 700, ls: 4, c: AMBER, a: c3 });
+    T('Nathalia Gadelha Filgueiras', W / 2 - 480, 846, { s: 58, w: 700, a: c3 });
+    T('20 anos  ·  licença de piloto privado aos 17', W / 2 - 480, 888, { s: 24, w: 500, c: 'rgba(255,255,255,.75)', a: c3 });
+  },
+
+  /* ---------------- 03 AGE ---------------- */
+  age(lt, sc, t) {
+    sky.update(t, { mode: 'day', speed: 80, cam: { dist: 44, az: 2.2 + lt * .025, el: .12 + lt * .004, fov: 34, shiftY: 170 } });
+    vignette();
+    const tlA = win(lt, sc.S(2) - .3, sc.S(6) + .2);
+    dim(.25 + tlA * .25 + win(lt, sc.S(6), sc.dur + 1, .5, .1) * .3);
+    const q = win(lt, .3, sc.S(2) + .1);
+    bigTitle([{ t: 'Uma copiloto de 20 anos', s: 84, w: 800 }, { t: 'num jato executivo?', s: 84, w: 300 }], q, 300);
+    const lg = win(lt, sc.S(1), sc.S(2) + .1, .3, .4);
+    const st = 1 + 1.5 * (1 - eout(seg(lt, sc.S(1), sc.S(1) + .35)));
+    g.save(); g.translate(W / 2, 640); g.rotate(-.06); g.scale(st, st);
+    P(-250, -70, 500, 140, lg, { bg: 'rgba(89,240,160,.12)', bc: GREEN, lw: 4 });
+    T('LEGAL NOS EUA', 0, 18, { s: 50, w: 800, ls: 3, al: 'center', c: GREEN, a: lg }); g.restore();
+    // timeline
+    const x0 = 230, x1 = 1690, y = 560, age = a => lerp(x0, x1, (a - 16) / 8);
+    const draw = eio(seg(lt, sc.S(2) - .3, sc.S(2) + 1));
+    line([[x0, y], [lerp(x0, x1, draw), y]], { c: 'rgba(255,255,255,.75)', lw: 3, a: tlA });
+    for (let a = 16; a <= 24; a++) { const xa = age(a); const k = tlA * ss(x0 + (xa - x0) - 10, xa, lerp(x0, x1, draw)); line([[xa, y - 10], [xa, y + 10]], { c: '#fff', lw: 2, a: k * .6 }); T(String(a), xa, y + 50, { s: 26, w: 600, al: 'center', c: 'rgba(255,255,255,.7)', a: k }); }
+    T('IDADE (anos)', x1, y + 92, { s: 18, w: 700, ls: 3, al: 'right', c: 'rgba(255,255,255,.5)', a: tlA });
+    const ms = [
+      [17, sc.S(2), 'PILOTO PRIVADO', 'Nathalia: aos 17, no secundário', CYAN, -1],
+      [18, sc.S(3), 'PILOTO COMERCIAL', 'idade mínima: 18', CYAN, 1],
+      [20, sc.S(4), 'SEGUNDA PILOTO', 'com qualificação no Learjet 60', AMBER, -1],
+      [23, sc.S(5), 'PILOTO DE LINHA AÉREA', 'idade mínima: 23 (ATP)', 'rgba(255,255,255,.85)', 1],
+    ];
+    for (const [a, ts, ti, sub, c, side] of ms) {
+      const k = tlA * ss(ts, ts + .5, lt), xa = age(a), yy = side < 0 ? y - 70 : y + 140;
+      g.save(); g.globalAlpha = k; g.fillStyle = c; g.shadowColor = c; g.shadowBlur = 20; g.beginPath(); g.arc(xa, y, 13, 0, 7); g.fill(); g.restore();
+      line([[xa, y + side * 18], [xa, yy + (side < 0 ? 12 : -46)]], { c, lw: 2, a: k * .7 });
+      T(ti, xa, yy + (side < 0 ? -30 : 0), { s: 30, w: 800, al: 'center', ls: 1.5, c, a: k });
+      T(sub, xa, yy + (side < 0 ? 4 : 36), { s: 22, w: 500, al: 'center', c: 'rgba(255,255,255,.8)', a: k });
+    }
+    // crew cards
+    const cr = win(lt, sc.S(6), sc.S(7) + .2);
+    card(W / 2 - 560, 400, 520, 220, cr, 'COMANDANTE', '55 anos', { s: 80, vs: 100, accent: CYAN, sub: 'responsável final pelo voo' });
+    card(W / 2 + 40, 400, 520, 220, cr * ss(sc.S(6) + .4, sc.S(6) + .9, lt), 'COPILOTO', '20 anos', { s: 80, vs: 100, accent: AMBER, sub: 'segunda em comando' });
+    const qa = win(lt, sc.S(7), sc.dur + 1, .6, .1);
+    bigTitle([{ t: 'A idade, por si só,', s: 70, w: 300 }, { t: 'não explica um acidente.', s: 70, w: 800 }], qa, 460);
+    T('A física ajuda a perceber o que pode ter acontecido.', W / 2, 700, { s: 34, w: 500, al: 'center', c: AMBER, a: qa * ss(sc.S(8), sc.S(8) + .6, lt) });
+  },
+
+  /* ---------------- 04 STORM ---------------- */
+  storm(lt, sc, t) {
+    const fl = flashAt(t);
+    const sw1 = sc.S(1) - .15, sw2 = sc.S(4) - .1;
+    if (lt < sw1) {
+      storm.update(t, { pitch: .02, roll: 0, speed: 150, turb: 1.25, flash: fl, cam: { dist: 30, az: 2.0 + lt * .05, el: .05, lead: 6 } });
+      vignette();
+      const a = win(lt, .5, sw1 + .3);
+      P(120, 700, 760, 250, a);
+      T('TRIPULAÇÃO → CONTROLO AÉREO  ·  ~12:47', 160, 752, { s: 20, w: 700, ls: 2.5, c: AMBER, a });
+      ['“Gelo leve, transparente”', '“Turbulência moderada”', '“Desvios de ~700 pés”'].forEach((s, i) => {
+        const k = a * ss(.9 + i * 1.6, 1.4 + i * 1.6, lt); T(s, 160, 812 + i * 48, { s: 36, w: 600, it: true, a: k });
+      });
+      const sh = 700 * (Math.sin(t * 2.3) * .6 + Math.sin(t * 5.1) * .4);
+      P(1500, 300, 300, 420, a * .9);
+      T('DESVIO', 1650, 350, { s: 18, w: 700, ls: 3, al: 'center', c: 'rgba(255,255,255,.6)', a });
+      line([[1560, 510], [1740, 510]], { c: 'rgba(255,255,255,.4)', lw: 2, a, dash: [6, 6] });
+      [[-700, '−700'], [700, '+700']].forEach(([v, s]) => { line([[1580, 510 - v * .22], [1720, 510 - v * .22]], { c: RED, lw: 2, a: a * .7 }); T(s, 1730, 510 - v * .22 + 7, { s: 18, w: 600, c: RED, a }); });
+      g.save(); g.globalAlpha = a; g.fillStyle = CYAN; g.shadowColor = CYAN; g.shadowBlur = 16; g.beginPath(); g.arc(1650, 510 - sh * .22, 12, 0, 7); g.fill(); g.restore();
+      T((sh >= 0 ? '+' : '−') + fmt(Math.abs(sh)) + ' pés', 1650, 690, { s: 30, w: 700, al: 'center', a });
+    } else if (lt < sw2) {
+      const l = lt - sw1;
+      const grow = .55 + .45 * eout(seg(lt, sw1, sw1 + 4.5));
+      const c = { az: .95 + l * .022, dist: 52 - l * .3, h: 7 + l * .05, look: V3(-1, 6.6, 0) };
+      cb.update(t, lt, { grow, flash: fl, cloudK: 1 - .55 * ss(sc.S(2), sc.S(2) + 1.2, lt), parts: ss(sc.S(2), sc.S(2) + 1.2, lt), phase: ss(sc.S(3), sc.S(3) + 1, lt) > .5, planes: ss(sc.S(3), sc.S(3) + 1, lt), flLine: ss(sw1 + 1, sw1 + 2, lt), jetX: lerp(-26, -1.5, seg(lt, sw1 + .5, sw2)), cam: c });
+      vignette();
+      const ra = win(lt, sw1 + .3, sc.S(2) + .3);
+      T('CÉLULA DE TROVOADA EM RÁPIDO CRESCIMENTO', 120, 990, { s: 26, w: 700, ls: 3, c: AMBER, a: ra });
+      // ruler labels
+      for (let h = 0; h <= 14; h += 2) { const [x, y] = proj(V3(-17, h, 9), cb.cam); T(h + ' km', x - 14, y + 7, { s: 19, w: 600, al: 'right', c: 'rgba(255,255,255,.75)', a: win(lt, sw1 + .3, sw2) }); }
+      const [fx, fy] = proj(V3(-17, 10.7, 0), cb.cam);
+      T('FL350 ≈ 10,7 km', fx - 22, fy - 14, { s: 22, w: 700, al: 'right', c: AMBER, a: ss(sw1 + 1, sw1 + 2, lt) * (1 - ss(sw2 - .4, sw2, lt)) });
+      const ua = win(lt, sc.S(2) + .2, sw2);
+      const [ux, uy] = proj(V3(2.2, 6.5, 0), cb.cam);
+      if (ua > 0) { arrow(ux + 150, uy + 160, ux + 150, uy - 120, { c: CYAN, lw: 6, a: ua, glow: 16, hs: 26 }); T('corrente ascendente', ux + 180, uy + 10, { s: 30, w: 700, c: '#fff', a: ua }); T('> 30 m/s', ux + 180, uy + 60, { s: 54, w: 800, c: CYAN, a: ua }); T('≈ 110 km/h para cima', ux + 180, uy + 98, { s: 22, w: 500, c: 'rgba(255,255,255,.75)', a: ua }); }
+      const pa = win(lt, sc.S(3) + .3, sw2);
+      const [zx, zy] = proj(V3(19, 4.6, 0), cb.cam), [qx, qy] = proj(V3(19, 10.0, 0), cb.cam);
+      T('0 °C — nível de congelação (~4,6 km)', zx + 16, zy + 8, { s: 22, w: 700, c: CYAN, a: pa });
+      T('≈ −40 °C', qx + 16, qy + 8, { s: 22, w: 700, c: '#fff', a: pa * .8 });
+      P(1340, 170, 470, 250, pa);
+      T('ÁGUA EM SOBREFUSÃO', 1372, 220, { s: 20, w: 700, ls: 3, c: CYAN, a: pa });
+      T('Líquida abaixo de 0 °C', 1372, 270, { s: 32, w: 700, a: pa });
+      T('sem núcleo para cristalizar,', 1372, 312, { s: 22, w: 500, c: 'rgba(255,255,255,.75)', a: pa });
+      T('congela ao primeiro impacto.', 1372, 344, { s: 22, w: 500, c: 'rgba(255,255,255,.75)', a: pa });
+      [['água', [.25, .5, 1]], ['sobrefusão', [.35, 1, 1]], ['gelo', [.95, .97, 1]]].forEach(([n, c], i) => { g.save(); g.globalAlpha = pa; g.fillStyle = `rgb(${c.map(v => v * 255).join(',')})`; g.beginPath(); g.arc(1384 + i * 140, 388, 8, 0, 7); g.fill(); g.restore(); T(n, 1400 + i * 140, 395, { s: 19, w: 600, a: pa }); });
+    } else {
+      const l = lt - sw2;
+      foil.update(t, lt, { drops: 1, dropT: l * 1.2, ice: 0, flowK: .55, cam: { pos: [lerp(-3.4, -2.8, seg(l, 0, 4)), .55, 5.3], look: [-1.3, 0, -.8], fov: 30 } });
+      vignette();
+      const a = win(lt, sw2 + .3, sc.dur + 1, .5, .1);
+      const [lx, ly] = proj(foil.chordPoint(0), foil.cam);
+      T('impacto → congelação instantânea', lx - 40, ly - 190, { s: 34, w: 700, al: 'right', a });
+      T('bordo de ataque', lx - 40, ly + 210, { s: 24, w: 600, al: 'right', c: CYAN, a });
+      arrow(lx - 30, ly + 170, lx - 6, ly + 30, { c: CYAN, lw: 3, a, hs: 14 });
+    }
+    if (lt > sw1 - .25 && lt < sw1 + .25) BLACK = Math.max(BLACK, 1 - Math.abs(lt - sw1) / .25);
+    if (lt > sw2 - .25 && lt < sw2 + .25) BLACK = Math.max(BLACK, 1 - Math.abs(lt - sw2) / .25);
+    disclaimer(win(lt, .3, sc.dur));
+    return { flash: lt < sw1 ? fl : fl * .5 };
+  },
+
+  /* ---------------- 05 ICE / LIFT ---------------- */
+  ice(lt, sc, t) {
+    const ice = eio(seg(lt, sc.S(3) + .3, sc.S(3) + 3.5));
+    const l = lt;
+    foil.update(t, lt, { ice, sep: ice, flowK: 1, speedCol: true, cam: { pos: [lerp(-2.4, -1.6, seg(l, 0, sc.dur)), lerp(1.35, 1.0, seg(l, 0, sc.dur)), lerp(9.4, 8.6, seg(l, 0, sc.dur))], look: [.2, -.2, -1], fov: 30 } });
+    vignette();
+    // equation
+    const ea = win(lt, sc.S(1) - .1, sc.S(3) + .3);
+    const terms = [['L', 'sustentação', '#fff'], ['=', '', 'rgba(255,255,255,.6)'], ['½', '', '#fff'], ['ρ', 'densidade do ar', CYAN], ['v²', 'velocidade²', AMBER], ['S', 'área da asa', '#fff'], ['C', 'coef. de sustentação', GREEN]];
+    const hl = Math.floor(seg(lt, sc.S(1) + .6, sc.E(1)) * 6.999);
+    let x = W / 2 - 330; const y = 230;
+    P(W / 2 - 420, 140, 840, 200, ea);
+    terms.forEach(([s, lab, c], i) => {
+      const active = lt > sc.S(1) + .6 && lt < sc.E(1) + .3 ? ((i === 0 && hl === 0) || (i === 3 && hl === 1) || (i === 4 && hl === 2) || (i === 5 && hl === 3) || (i === 6 && hl >= 4)) : (i === 6 && lt > sc.S(2));
+      const w = T(s, x, y + 32, { s: 96, w: 600, c: active ? c : 'rgba(255,255,255,.88)', a: ea, sb: active ? 30 : 10 });
+      if (i === 6) T('L', x + w + 2, y + 52, { s: 44, w: 600, c: active ? c : 'rgba(255,255,255,.88)', a: ea });
+      if (active && lab) T(lab, x + w / 2 + (i === 6 ? 14 : 0), y + 92, { s: 24, w: 600, al: 'center', c, a: ea });
+      x += w + (i === 6 ? 40 : 36);
+    });
+    // lift arrow
+    const la = win(lt, sc.S(2), sc.dur + 1, .5, .1);
+    const lift = lerp(1, .55, ice);
+    const cp = foil.chordPoint(.27); const [px, py] = proj(cp, foil.cam);
+    arrow(px, py - 20, px, py - 20 - 300 * lift, { c: GREEN, lw: 8, a: la, glow: 18, hs: 30 });
+    T('SUSTENTAÇÃO', px + 26, py - 170 * lift - 40, { s: 24, w: 800, ls: 2, c: GREEN, a: la });
+    if (ice > .3) T(`−${Math.round(45 * ice)}%`, px + 26, py - 170 * lift, { s: 40, w: 800, c: RED, a: la * ss(.3, .6, ice) });
+    // ice labels
+    const ia = win(lt, sc.S(3) + 1, sc.dur + 1, .5, .1);
+    const [lx, ly] = proj(foil.chordPoint(0), foil.cam);
+    T('gelo em “cornos”', lx - 30, ly + 150, { s: 28, w: 700, al: 'right', c: '#dff3ff', a: ia });
+    arrow(lx - 40, ly + 118, lx - 6, ly + 22, { c: '#dff3ff', lw: 3, a: ia, hs: 14 });
+    const [sx, sy] = proj(foil.upperPoint(.55), foil.cam);
+    T('escoamento separado', sx + 40, sy - 150, { s: 28, w: 700, c: RED, a: ia });
+    T('turbulento, sem sustentação', sx + 40, sy - 116, { s: 22, w: 500, c: 'rgba(255,255,255,.75)', a: ia });
+    // CL-alpha graph
+    const ga = win(lt, sc.S(4), sc.dur + 1, .5, .1);
+    const GX = 1240, GY = 560, GW = 560, GH = 380;
+    P(GX - 40, GY - 70, GW + 80, GH + 150, ga);
+    T('COEFICIENTE DE SUSTENTAÇÃO  vs  ÂNGULO DE ATAQUE', GX - 10, GY - 28, { s: 16, w: 700, ls: 2, c: 'rgba(255,255,255,.7)', a: ga });
+    const gx = a => GX + a / 20 * GW, gy = c => GY + GH - c / 1.8 * GH;
+    line([[GX, GY], [GX, GY + GH], [GX + GW, GY + GH]], { c: 'rgba(255,255,255,.5)', lw: 2, a: ga });
+    T('α (graus)', GX + GW, GY + GH + 40, { s: 18, w: 600, al: 'right', c: 'rgba(255,255,255,.6)', a: ga });
+    T('C', GX - 26, GY + 14, { s: 22, w: 700, c: 'rgba(255,255,255,.6)', a: ga });
+    [0, 5, 10, 15, 20].forEach(a => T(String(a), gx(a), GY + GH + 30, { s: 16, w: 500, al: 'center', c: 'rgba(255,255,255,.5)', a: ga }));
+    const cl = (a, m, s) => a <= s ? m * a : m * s - (a - s) * .09 - (a - s) ** 2 * .012;
+    const dr = eio(seg(lt, sc.S(4) + .2, sc.S(4) + 2));
+    const clean = [], iced = [];
+    for (let a = 0; a <= 20 * dr; a += .25) { clean.push([gx(a), gy(Math.max(0, cl(a, .108, 15)))]); iced.push([gx(a), gy(Math.max(0, cl(a, .1, 9.5)))]); }
+    line(clean, { c: CYAN, lw: 4, a: ga, glow: 10 });
+    const ia2 = ss(sc.S(4) + 1.2, sc.S(4) + 2.4, lt) * ga;
+    line(iced, { c: RED, lw: 4, a: ia2, glow: 10 });
+    T('asa limpa', gx(15) - 10, gy(1.62) - 22, { s: 20, w: 700, al: 'center', c: CYAN, a: ga * ss(.7, 1, dr) });
+    T('com gelo', gx(9.5) + 4, gy(.95) - 22, { s: 20, w: 700, al: 'center', c: RED, a: ia2 });
+    line([[gx(15), gy(1.62)], [gx(15), gy(.95)]], { c: '#fff', lw: 2, dash: [5, 6], a: ia2 });
+    T('−35 %', gx(15) + 14, gy(1.3), { s: 30, w: 800, c: '#fff', a: ia2 });
+    T('perda mais cedo', gx(9.5), gy(.2) + 4, { s: 18, w: 600, al: 'center', c: RED, a: ia2 });
+    line([[gx(9.5), gy(.95) + 8], [gx(9.5), gy(.3)]], { c: RED, lw: 1.5, dash: [4, 5], a: ia2 });
+    T('ilustrativo', GX + GW, GY + GH + 64, { s: 15, w: 500, al: 'right', c: 'rgba(255,255,255,.4)', a: ga });
+    disclaimer(win(lt, .3, sc.dur));
+  },
+
+  /* ---------------- 06 COFFIN CORNER ---------------- */
+  coffin(lt, sc, t) {
+    sky.update(t, { mode: 'dusk', speed: 70, hideJet: true, cam: { dist: 70, az: 2.7 + lt * .01, el: -.04, fov: 30, off: V3(0, 0, 0), look: V3(-12, 4, 0) } });
+    vignette(); dim(.5);
+    // ISA
+    const isa = hft => { const h = hft * .3048; const T0 = h < 11000 ? 288.15 - .0065 * h : 216.65; const p = h < 11000 ? Math.pow(T0 / 288.15, 5.2559) : .22336 * Math.exp(-(h - 11000) / 6341.6); return { T: T0, sig: p / (T0 / 288.15), a: Math.sqrt(1.4 * 287.05 * T0) }; };
+    const z = isa(35000);
+    const ca = win(lt, .3, sc.dur + 1, .5, .1);
+    const items = [['DENSIDADE DO AR', '1,225 → ' + fmtd(1.225 * z.sig, 2), 'kg/m³  (' + Math.round(z.sig * 100) + ' % do nível do mar)', CYAN],
+      ['TEMPERATURA', '15 → −' + Math.abs(Math.round(z.T - 273.15)) + ' °C', 'atmosfera padrão a 35 000 pés', '#fff'],
+      ['VELOCIDADE DO SOM', '340 → ' + Math.round(z.a) + ' m/s', 'a ∝ √T  — ar frio, som mais lento', AMBER]];
+    items.forEach(([lb, v, sub, c], i) => { const k = ca * ss(.5 + i * 1.2, 1 + i * 1.2, lt); card(1280, 170 + i * 200, 520, 180, k, lb, v, { s: 46, accent: c, sub }); });
+    // graph
+    const GX = 230, GY = 180, GW = 880, GH = 700;
+    const ga = ss(sc.S(1) - .2, sc.S(1) + .4, lt);
+    P(GX - 90, GY - 60, GW + 150, GH + 170, ga);
+    const vx = v => GX + (v - 80) / 280 * GW, hy = h => GY + GH - h / 52000 * GH;
+    line([[GX, GY], [GX, GY + GH], [GX + GW, GY + GH]], { c: 'rgba(255,255,255,.55)', lw: 2, a: ga });
+    for (let h = 10000; h <= 50000; h += 10000) { line([[GX, hy(h)], [GX + GW, hy(h)]], { c: 'rgba(255,255,255,.08)', lw: 1, a: ga }); T('FL' + h / 100, GX - 14, hy(h) + 6, { s: 17, w: 600, al: 'right', c: 'rgba(255,255,255,.55)', a: ga }); }
+    T('ALTITUDE', GX - 14, GY - 22, { s: 16, w: 700, ls: 2, al: 'right', c: 'rgba(255,255,255,.6)', a: ga });
+    T('VELOCIDADE INDICADA →', GX + GW, GY + GH + 44, { s: 16, w: 700, ls: 2, al: 'right', c: 'rgba(255,255,255,.6)', a: ga });
+    const iceK = eio(seg(lt, sc.S(4) + .3, sc.S(4) + 2.5));
+    const vStall = h => (112 + 78 * Math.pow(h / 51000, 2.3)) * (1 + .3 * iceK);
+    const vMach = h => { const s = isa(h); return Math.min(330, .81 * s.a / .5144 * Math.sqrt(s.sig)); };
+    const dr = eio(seg(lt, sc.S(1), sc.S(1) + 2.2));
+    const sp = [], mp = [];
+    let hc = 52000; for (let h = 0; h <= 52000; h += 250) { if (vStall(h) >= vMach(h)) { hc = h; break; } }
+    for (let h = 0; h <= hc * dr; h += 250) { sp.push([vx(vStall(h)), hy(h)]); mp.push([vx(vMach(h)), hy(h)]); }
+    // fill region
+    const fa = ga * ss(sc.S(2), sc.S(2) + .8, lt);
+    if (fa > 0 && sp.length > 2) { g.save(); g.globalAlpha = fa * .35; const gr = g.createLinearGradient(0, hy(0), 0, hy(hc)); gr.addColorStop(0, 'rgba(89,240,160,.6)'); gr.addColorStop(1, 'rgba(255,77,94,.9)'); g.fillStyle = gr; g.beginPath(); sp.forEach((p, i) => i ? g.lineTo(...p) : g.moveTo(...p)); for (let i = mp.length - 1; i >= 0; i--) g.lineTo(...mp[i]); g.closePath(); g.fill(); g.restore(); }
+    line(sp, { c: RED, lw: 5, a: ga, glow: 10 }); line(mp, { c: AMBER, lw: 5, a: ga, glow: 10 });
+    if (sp.length > 10) { const k = sp[Math.floor(sp.length * .25)]; T('VELOCIDADE DE PERDA', k[0] + 20, k[1] + 6, { s: 20, w: 800, ls: 1.5, c: RED, a: ga * ss(.4, .7, dr) }); const m = mp[Math.floor(mp.length * .2)]; T('LIMITE DE VELOCIDADE (Vmo / Mmo 0,81)', m[0] - 20, m[1] + 6, { s: 20, w: 800, ls: 1.5, al: 'right', c: AMBER, a: ga * ss(.4, .7, dr) }); }
+    // FL350 margin
+    const ma = ga * ss(sc.S(2), sc.S(2) + .6, lt);
+    line([[GX, hy(35000)], [GX + GW, hy(35000)]], { c: 'rgba(255,255,255,.7)', lw: 2, dash: [8, 8], a: ma });
+    T('35 000 pés', GX + GW - 8, hy(35000) - 12, { s: 18, w: 700, al: 'right', a: ma });
+    const a1 = vx(vStall(35000)), a2 = vx(vMach(35000));
+    line([[a1, hy(35000) + 24], [a2, hy(35000) + 24]], { c: '#fff', lw: 3, a: ma });
+    line([[a1, hy(35000) + 14], [a1, hy(35000) + 34]], { c: '#fff', lw: 3, a: ma }); line([[a2, hy(35000) + 14], [a2, hy(35000) + 34]], { c: '#fff', lw: 3, a: ma });
+    const mg = vMach(35000) - vStall(35000);
+    T(`margem ≈ ${Math.round(mg)} nós`, (a1 + a2) / 2, hy(35000) + 66, { s: 26, w: 800, al: 'center', c: mg < 60 ? RED : '#fff', a: ma });
+    // coffin corner callout
+    const cc = ga * ss(sc.S(3), sc.S(3) + .6, lt);
+    if (sp.length) { const [cxp, cyp] = sp[sp.length - 1]; g.save(); g.globalAlpha = cc; g.strokeStyle = '#fff'; g.lineWidth = 3; g.shadowColor = '#fff'; g.shadowBlur = 14; g.beginPath(); g.arc(cxp, cyp, 26 + 4 * Math.sin(lt * 5), 0, 7); g.stroke(); g.restore(); T('“CANTO DO CAIXÃO”', cxp + 50, cyp + 4, { s: 34, w: 900, c: '#fff', a: cc }); T('coffin corner', cxp + 50, cyp + 38, { s: 20, w: 500, it: true, c: 'rgba(255,255,255,.7)', a: cc }); }
+    // jet + gust band
+    const ja = ga * ss(sc.S(4), sc.S(4) + .5, lt);
+    const cruise = 243, gust = 32 * (Math.sin(lt * 3.1) * .6 + Math.sin(lt * 7.3) * .4) * ss(sc.S(4) + 1, sc.S(4) + 2, lt);
+    const jx = vx(cruise + gust), jy = hy(35000);
+    g.save(); g.globalAlpha = ja * .25; g.fillStyle = CYAN; g.fillRect(vx(cruise - 32), jy - 16, vx(cruise + 32) - vx(cruise - 32), 32); g.restore();
+    g.save(); g.globalAlpha = ja; g.fillStyle = CYAN; g.shadowColor = CYAN; g.shadowBlur = 18; g.beginPath(); g.moveTo(jx + 18, jy); g.lineTo(jx - 12, jy - 12); g.lineTo(jx - 6, jy); g.lineTo(jx - 12, jy + 12); g.closePath(); g.fill(); g.restore();
+    T('rajadas ± 30 nós', vx(cruise), jy - 30, { s: 20, w: 700, al: 'center', c: CYAN, a: ja });
+    T('+ gelo', vx(vStall(35000)) - 10, hy(35000) - 40, { s: 22, w: 800, al: 'right', c: RED, a: ja * iceK });
+    T('Curvas ilustrativas, aproximadas para um Learjet 60 (atmosfera padrão ISA).', GX - 60, GY + GH + 92, { s: 16, w: 500, c: 'rgba(255,255,255,.45)', a: ga });
+    disclaimer(win(lt, .3, sc.dur));
+  },
+
+  /* ---------------- 07 DIVE / OVERSPEED ---------------- */
+  dive(lt, sc, t) {
+    const fl = flashAt(t);
+    const sw1 = sc.S(4) - .1, sw2 = sc.S(7) - .1;
+    let flashOut = 0;
+    if (lt < sw1) {
+      const climb = ss(sc.S(0) + .5, sc.S(0) + 2, lt) * (1 - ss(sc.S(1), sc.S(1) + .8, lt));
+      const dv = eio(seg(lt, sc.S(1) + .4, sc.S(1) + 3.4));
+      storm.update(t, {
+        pitch: .07 * climb - 1.0 * dv, roll: .7 * dv + .15 * Math.sin(lt * 1.3) * dv, speed: 150 + 200 * dv, turb: 1 + .6 * dv, flash: fl,
+        cam: { dist: lerp(30, 26, dv), az: lerp(2.0, 3.9, eio(seg(lt, 0, sw1))), el: lerp(.06, -.25, dv), lead: 6, fov: lerp(42, 50, dv), shift: 430 }
+      });
+      flashOut = fl;
+      vignette(1.2);
+      const ha = win(lt, .4, sw1 + .3);
+      const prog = ein(seg(lt, sc.S(1) + .4, sw1));
+      const alt = lt < sc.S(1) ? lerp(35000, 35400, ss(sc.S(0) + .5, sc.S(1), lt)) : lerp(35400, 8750, prog);
+      const vs = lt < sc.S(1) ? 1200 * climb : -lerp(0, 32600, ss(sc.S(1) + .4, sc.S(2) + .5, lt));
+      const mach = lerp(.76, .9, ss(sc.S(1) + .4, sc.S(2) + 1.5, lt));
+      P(110, 300, 560, 420, ha * .9);
+      T('ALTITUDE', 150, 360, { s: 20, w: 700, ls: 4, c: 'rgba(255,255,255,.65)', a: ha });
+      T(fmt(alt) + ' pés', 150, 440, { s: 72, w: 800, a: ha });
+      T('VELOCIDADE VERTICAL', 150, 500, { s: 20, w: 700, ls: 3, c: 'rgba(255,255,255,.65)', a: ha });
+      T((vs < 0 ? '−' : '+') + fmt(Math.abs(vs)) + ' pés/min', 150, 560, { s: 50, w: 800, c: vs < -5000 ? RED : '#fff', a: ha });
+      T('MACH', 150, 620, { s: 20, w: 700, ls: 4, c: 'rgba(255,255,255,.65)', a: ha });
+      T(fmtd(mach, 2), 150, 684, { s: 54, w: 800, c: mach > .81 ? RED : '#fff', a: ha });
+      if (mach > .81) { const bl = (Math.floor(lt * 3) % 2) ? 1 : .35; P(330, 640, 300, 58, ha * bl, { bg: 'rgba(255,77,94,.25)', bc: RED, r: 8 }); T('OVERSPEED', 480, 680, { s: 30, w: 900, ls: 4, al: 'center', c: RED, a: ha * bl }); }
+      const ra = win(lt, sc.S(0) + .3, sc.S(1) + .4);
+      P(1240, 760, 560, 130, ra); T('PEDIDO AO CONTROLO', 1270, 806, { s: 18, w: 700, ls: 3, c: AMBER, a: ra }); T('subir para FL370 · 37 000 pés', 1270, 856, { s: 32, w: 600, a: ra });
+      const ca = win(lt, sc.S(3) - .1, sw1 + .3);
+      P(W / 2 - 700, 790, 1400, 190, ca);
+      const vals = [['32 000', 'pés / min'], ['≈ 163', 'm / s'], ['≈ 585', 'km/h na vertical']];
+      vals.forEach(([v, u], i) => { const x = W / 2 - 470 + i * 470; const k = ca * ss(sc.S(3) + i * .7, sc.S(3) + i * .7 + .4, lt); T(v, x, 892, { s: 76, w: 900, al: 'center', c: i === 2 ? RED : '#fff', a: k }); T(u, x, 940, { s: 22, w: 600, al: 'center', c: 'rgba(255,255,255,.7)', a: k }); if (i < 2) T('=', x + 235, 885, { s: 54, w: 300, al: 'center', c: 'rgba(255,255,255,.5)', a: ca * ss(sc.S(3) + i * .7 + .5, sc.S(3) + i * .7 + .8, lt) }); });
+    } else if (lt < sw2) {
+      const shockX = lerp(-.25, .75, eio(seg(lt, sc.S(5), sc.S(5) + 3.5)));
+      const stress = ss(sc.S(6) + 1.5, sc.S(6) + 5, lt);
+      foil.update(t, lt, { ice: .25, sep: .2, flowK: .9, speedCol: true, shock: ss(sc.S(4) + .4, sc.S(4) + 1.4, lt), shockX, stress, cam: { pos: [-1.9, 1.5, 9.4], look: [.3, -.1, -1], fov: 30 } });
+      vignette();
+      const sa = win(lt, sc.S(4) + 1, sw2);
+      const [sx, sy] = proj(foil.upperPoint(seg(shockX, foil.xLE, foil.xTE)).add(V3(0, .9, 0)), foil.cam);
+      T('ONDA DE CHOQUE', sx + 20, sy - 70, { s: 30, w: 800, ls: 2, c: '#fff1c9', a: sa });
+      const [px2, py2] = proj(foil.upperPoint(.2).add(V3(0, .25, 0)), foil.cam);
+      T('ar acima de Mach 1', px2 - 160, py2 - 150, { s: 24, w: 700, al: 'center', c: '#ff9a55', a: sa });
+      // centre of pressure
+      const ca2 = win(lt, sc.S(5), sw2);
+      const cpf = lerp(.25, .5, eio(seg(lt, sc.S(5) + .5, sc.S(5) + 3.5)));
+      const [cx2, cy2] = proj(foil.chordPoint(cpf), foil.cam);
+      arrow(cx2, cy2 - 10, cx2, cy2 - 250, { c: GREEN, lw: 7, a: ca2, glow: 14, hs: 26 });
+      g.save(); g.globalAlpha = ca2; g.fillStyle = GREEN; g.beginPath(); g.arc(cx2, cy2, 10, 0, 7); g.fill(); g.restore();
+      T('centro de pressão recua →', cx2, cy2 + 120, { s: 26, w: 700, al: 'center', c: GREEN, a: ca2 });
+      const ma = ca2 * ss(sc.S(5) + 2.2, sc.S(5) + 3, lt);
+      const [nx, ny] = proj(foil.chordPoint(0), foil.cam);
+      g.save(); g.globalAlpha = ma; g.strokeStyle = RED; g.lineWidth = 7; g.shadowColor = RED; g.shadowBlur = 14; g.beginPath(); g.arc(nx + 120, ny, 140, Math.PI * 1.15, Math.PI * .85, true); g.stroke(); g.restore();
+      const ea = Math.PI * .85; arrow(nx + 120 + Math.cos(ea + .2) * 140, ny + Math.sin(ea + .2) * 140, nx + 120 + Math.cos(ea) * 140, ny + Math.sin(ea) * 140, { c: RED, lw: 7, a: ma, hs: 26 });
+      T('nariz para baixo', nx - 40, ny + 190, { s: 30, w: 800, al: 'right', c: RED, a: ma });
+      T('“MACH TUCK”', nx - 40, ny + 232, { s: 24, w: 700, ls: 3, al: 'right', c: '#fff', a: ma });
+      // force ∝ v²
+      const fa = win(lt, sc.S(6), sw2);
+      const GX = 1270, GY = 590, GW = 520, GH = 330;
+      P(GX - 40, GY - 80, GW + 80, GH + 150, fa);
+      T('FORÇA AERODINÂMICA  ∝  v²', GX - 10, GY - 34, { s: 20, w: 800, ls: 2, c: '#fff', a: fa });
+      line([[GX, GY], [GX, GY + GH], [GX + GW, GY + GH]], { c: 'rgba(255,255,255,.5)', lw: 2, a: fa });
+      const gx2 = v => GX + v * GW, gy2 = f => GY + GH - f * GH;
+      const lim = .62;
+      line([[GX, gy2(lim)], [GX + GW, gy2(lim)]], { c: RED, lw: 2, dash: [8, 7], a: fa });
+      T('limite estrutural', GX + 8, gy2(lim) - 12, { s: 18, w: 700, c: RED, a: fa });
+      const pr = eio(seg(lt, sc.S(6) + .5, sc.S(6) + 4.5)); const cv = [];
+      for (let v = 0; v <= pr; v += .01) cv.push([gx2(v), gy2(v * v * .95)]);
+      line(cv, { c: AMBER, lw: 5, a: fa, glow: 10 });
+      if (cv.length) { const [lx2, ly2] = cv[cv.length - 1]; g.save(); g.globalAlpha = fa; g.fillStyle = pr * pr * .95 > lim ? RED : AMBER; g.beginPath(); g.arc(lx2, ly2, 11, 0, 7); g.fill(); g.restore(); }
+      T('velocidade →', GX + GW, GY + GH + 34, { s: 17, w: 600, al: 'right', c: 'rgba(255,255,255,.6)', a: fa });
+      T('2× velocidade = 4× força', GX - 10, GY + GH + 60, { s: 22, w: 700, c: AMBER, a: fa * ss(sc.S(6) + 2.5, sc.S(6) + 3.2, lt) });
+    } else {
+      storm.update(t, { pitch: -.9, roll: .8, speed: 330, turb: 1.5, flash: fl, dark: .6, cloudK: 1, cam: { dist: 120, az: 3.4, el: -.2, lead: 0, fov: 40 } });
+      flashOut = fl * .6;
+      vignette(1.3); dim(.72);
+      const a = win(lt, sw2 + .3, sc.dur + 1, .6, .1);
+      T('NTSB', W / 2, 400, { s: 30, w: 800, ls: 10, al: 'center', c: AMBER, a });
+      bigTitle([{ t: 'Indícios de desintegração', s: 82, w: 800 }, { t: 'ainda em voo', s: 82, w: 300 }], a, 530);
+      T('Os investigadores continuam a procurar componentes da aeronave.', W / 2, 760, { s: 30, w: 500, al: 'center', c: 'rgba(255,255,255,.75)', a: a * ss(sw2 + 1.5, sw2 + 2.2, lt) });
+    }
+    for (const sw of [sw1, sw2]) if (lt > sw - .25 && lt < sw + .25) BLACK = Math.max(BLACK, 1 - Math.abs(lt - sw) / .25);
+    disclaimer(win(lt, .3, sc.dur));
+    return { flash: flashOut };
+  },
+
+  /* ---------------- 08 OUTRO ---------------- */
+  outro(lt, sc, t) {
+    const sw1 = sc.S(3) - .1, sw2 = sc.S(5) - .1;
+    if (lt < sw1) {
+      sky.update(t, { mode: 'dusk', speed: 50, hideJet: true, cam: { dist: 90, az: 2.9 + lt * .01, el: .02, fov: 28, look: V3(0, 8, 0) } });
+      vignette(); dim(.55);
+      const a = win(lt, .3, sw1 + .3);
+      bigTitle([{ t: 'HIPÓTESES,', s: 96, w: 900 }, { t: 'NÃO CONCLUSÕES', s: 96, w: 300, ls: 6 }], a * (1 - ss(sc.S(1) - .2, sc.S(1) + .4, lt) * .75), 300);
+      const ta = win(lt, sc.S(1), sw1 + .3);
+      const x0 = 300, x1 = 1620, y = 660;
+      line([[x0, y], [lerp(x0, x1, eio(seg(lt, sc.S(1), sc.S(2) + 1))), y]], { c: 'rgba(255,255,255,.7)', lw: 3, a: ta });
+      [[0, sc.S(1), '1 NOV 2026', 'acidente', RED], [.38, sc.S(1) + 2, '~30 DIAS', 'relatório preliminar', AMBER], [1, sc.S(2), '12–24 MESES', 'causa provável', CYAN]].forEach(([f, ts, ti, sub, c]) => {
+        const k = ta * ss(ts, ts + .5, lt), x = lerp(x0, x1, f);
+        g.save(); g.globalAlpha = k; g.fillStyle = c; g.shadowColor = c; g.shadowBlur = 18; g.beginPath(); g.arc(x, y, 14, 0, 7); g.fill(); g.restore();
+        T(ti, x, y - 44, { s: 36, w: 800, al: 'center', c, a: k }); T(sub, x, y + 60, { s: 26, w: 500, al: 'center', a: k });
+      });
+      T('NTSB: recolha de destroços, dados de radar, meteorologia e comunicações', W / 2, 860, { s: 26, w: 500, al: 'center', c: 'rgba(255,255,255,.7)', a: ta });
+    } else if (lt < sw2) {
+      renderer.setClearColor(0x000000); renderer.clear();
+      g.fillStyle = '#020806'; g.fillRect(0, 0, W, H);
+      const l = lt - sw1;
+      const CX = W / 2, CY = 1072, RR = 800;
+      g.save(); g.beginPath(); g.arc(CX, CY, RR, Math.PI, 0); g.closePath(); g.clip();
+      g.fillStyle = '#03140c'; g.fillRect(0, 0, W, H);
+      const scx = CX + 40, scy = CY - 450;
+      g.globalAlpha = .9; g.drawImage(radarImg, scx - 190, scy - 190, 380, 380); g.globalAlpha = 1;
+      for (let r = 1; r <= 4; r++) { g.strokeStyle = 'rgba(80,255,150,.2)'; g.lineWidth = 1.5; g.beginPath(); g.arc(CX, CY, RR * r / 4, Math.PI, 0); g.stroke(); }
+      const sa = Math.PI + ((l * 1.3) % Math.PI);
+      for (let i = 0; i < 40; i++) { g.strokeStyle = `rgba(80,255,150,${.25 * (1 - i / 40)})`; g.lineWidth = 6; g.beginPath(); g.moveTo(CX, CY); g.lineTo(CX + Math.cos(sa - i * .012) * RR, CY + Math.sin(sa - i * .012) * RR); g.stroke(); }
+      g.restore();
+      const a = win(lt, sw1 + .1, sc.dur + 1, .5, .1);
+      // 20 NM ring (radius scaled)
+      const ring = 300;
+      g.save(); g.globalAlpha = a * ss(sw1 + .8, sw1 + 1.6, lt); g.strokeStyle = '#fff'; g.lineWidth = 3; g.setLineDash([14, 12]); g.beginPath(); g.arc(scx, scy, ring, 0, 7); g.stroke(); g.restore();
+      T('20 NM', scx + ring * .72 + 14, scy - ring * .72, { s: 34, w: 800, c: '#fff', a: a * ss(sw1 + .8, sw1 + 1.6, lt) });
+      T('≈ 37 km', scx + ring * .72 + 14, scy - ring * .72 + 36, { s: 22, w: 500, c: 'rgba(255,255,255,.7)', a: a * ss(sw1 + .8, sw1 + 1.6, lt) });
+      // paths
+      const pa = a * ss(sw1 + 1.6, sw1 + 2.4, lt);
+      const start = [260, scy + 40], end = [1700, scy - 30];
+      line([start, [scx - 260, scy + 20]], { c: RED, lw: 4, dash: [10, 10], a: pa * .9 });
+      T('✕', scx - 255, scy + 34, { s: 40, w: 900, al: 'center', c: RED, a: pa });
+      const det = []; for (let i = 0; i <= 60; i++) { const u = i / 60; const x = lerp(start[0], end[0], u); const bump = Math.sin(Math.PI * clamp((x - (scx - ring - 160)) / (2 * ring + 320))) * (ring + 70); det.push([x, lerp(start[1], end[1], u) + bump]); }
+      const dp = eio(seg(lt, sw1 + 2, sw2 - .5)); const cut = Math.max(2, Math.floor(det.length * dp));
+      line(det.slice(0, cut), { c: GREEN, lw: 5, a: pa, glow: 12 });
+      const hp = det[cut - 1], hp0 = det[cut - 2]; const ang = Math.atan2(hp[1] - hp0[1], hp[0] - hp0[0]);
+      g.save(); g.globalAlpha = pa; g.translate(hp[0], hp[1]); g.rotate(ang); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(22, 0); g.lineTo(-14, -14); g.lineTo(-6, 0); g.lineTo(-14, 14); g.closePath(); g.fill(); g.restore();
+      T('CONTORNAR, NUNCA ATRAVESSAR', W / 2, 150, { s: 54, w: 900, ls: 3, al: 'center', a });
+      T('Margem recomendada a células de trovoada intensas', W / 2, 205, { s: 26, w: 500, al: 'center', c: 'rgba(255,255,255,.75)', a });
+      const fa = win(lt, sc.S(4), sc.dur + 1, .6, .1);
+      P(W / 2 - 520, 860, 1040, 120, fa, { accent: AMBER });
+      T('Lá dentro, a física não negoceia.', W / 2 + 6, 936, { s: 50, w: 800, al: 'center', a: fa });
+    } else {
+      renderer.setClearColor(0x000000); renderer.clear();
+      const l = lt - sw2;
+      const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#02030a'); gr.addColorStop(1, '#0b1020'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      for (const [x, y, s, p] of stars) { g.globalAlpha = .35 + .4 * Math.sin(lt * 1.5 + p * 20) ** 2; g.fillStyle = '#fff'; g.fillRect(x, y, s, s); } g.globalAlpha = 1;
+      const a = win(lt, sw2 + .2, sc.dur + 5, 1.2, .1);
+      for (let i = 0; i < 9; i++) {
+        const k = a * ss(sw2 + .4 + i * .18, sw2 + 1 + i * .18, lt); const x = W / 2 + (i - 4) * 90, y = 520;
+        const fl2 = 1 + .08 * Math.sin(lt * 7 + i * 2.1);
+        const rg = g.createRadialGradient(x, y, 0, x, y, 46 * fl2); rg.addColorStop(0, `rgba(255,214,140,${.95 * k})`); rg.addColorStop(.25, `rgba(255,170,70,${.45 * k})`); rg.addColorStop(1, 'rgba(255,150,50,0)');
+        g.fillStyle = rg; g.beginPath(); g.arc(x, y, 50, 0, 7); g.fill();
+      }
+      T('EM MEMÓRIA', W / 2, 380, { s: 28, w: 700, ls: 12, al: 'center', c: AMBER, a });
+      T('das nove vidas perdidas', W / 2, 680, { s: 56, w: 300, al: 'center', a });
+      T('Greenacres, Flórida  ·  1 de novembro de 2026', W / 2, 740, { s: 26, w: 500, al: 'center', c: 'rgba(255,255,255,.65)', a });
+      T('Fontes: NTSB · FAA · Flightradar24 · LiveATC · CNN · CBS12 · NBC Miami · WPTV', W / 2, 1000, { s: 18, w: 500, ls: 1, al: 'center', c: 'rgba(255,255,255,.45)', a });
+    }
+    for (const sw of [sw1, sw2]) if (lt > sw - .3 && lt < sw + .3) BLACK = Math.max(BLACK, 1 - Math.abs(lt - sw) / .3);
+    if (lt > sc.dur - 1.2) BLACK = Math.max(BLACK, ss(sc.dur - 1.2, sc.dur, lt));
+  },
+};
+
+/* =====================================================================
+   FRAME
+   ===================================================================== */
+function renderFrame(t) {
+  t = clamp(t, 0, TOTAL - 1e-4);
+  let sc = SC[0]; for (const s of SC) if (t >= s.start) sc = s;
+  const lt = t - sc.start;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.globalAlpha = 1;
+  BLACK = 0;
+  const res = SCENES[sc.id](lt, sc, t) || {};
+  chapterTag(sc, lt);
+  if (res.flash) { g.fillStyle = `rgba(220,232,255,${res.flash * .16})`; g.fillRect(0, 0, W, H); }
+  progressBar(t);
+  // scene cross-dips
+  const edge = Math.min(lt, sc.dur - lt);
+  if (sc.idx > 0 || lt > .1) BLACK = Math.max(BLACK, 1 - clamp(edge / .3));
+  if (sc.idx === 0) BLACK = Math.max(BLACK, 1 - clamp(lt / .8));
+  if (BLACK > 0) { g.fillStyle = `rgba(0,0,0,${BLACK})`; g.fillRect(0, 0, W, H); }
+}
+
+window.setupTimeline = setup;
+window.renderFrame = renderFrame;
+window.TIMELINE = setup(null);
+await document.fonts.load('700 40px Inter'); await document.fonts.load('300 40px Inter'); await document.fonts.load('900 40px Inter'); await document.fonts.load('italic 600 40px Inter');
+window.READY = true;
+</script>
+</body>
+</html>
