@@ -1,7 +1,5 @@
 node_modules/
 audio/
-out/part*.mp4
-out/log*.txt
-out/parts.txt
-out/still_*.jpg
 .env
+out/*
+!out/video_sem_voz.mp4
