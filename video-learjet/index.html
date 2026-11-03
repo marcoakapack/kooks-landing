@@ -59,7 +59,7 @@ function T(str, x, y, o = {}) {
   g.font = `${o.it ? 'italic ' : ''}${o.w || 400} ${o.s || 40}px Inter, "Inter Display", sans-serif`;
   g.fillStyle = o.c || '#fff'; g.textAlign = o.al || 'left'; g.textBaseline = 'alphabetic';
   g.letterSpacing = (o.ls || 0) + 'px';
-  if (o.glow) { g.shadowColor = o.glowC || o.c || '#fff'; g.shadowBlur = o.glow; } else { g.shadowColor = 'rgba(0,6,18,.7)'; g.shadowBlur = o.sb ?? 24; }
+  if (o.glow) { g.shadowColor = o.glowC || o.c || '#fff'; g.shadowBlur = o.glow; } else { g.shadowColor = 'transparent'; g.shadowBlur = 0; }
   g.fillText(str, x, y); const w = g.measureText(str).width; g.restore(); return w;
 }
 function L(pts, o = {}) {
@@ -112,7 +112,7 @@ function post(t, o = {}) {
   // vignette
   const vg = g.createRadialGradient(W / 2, H / 2, H * .32, W / 2, H / 2, H * 1.0);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${.5 * (o.vig ?? 1)})`); g.fillStyle = vg; g.fillRect(0, 0, W, H);
-  let sc = g.createLinearGradient(0, H - BAR - 300, 0, H - BAR); sc.addColorStop(0, 'rgba(0,8,20,0)'); sc.addColorStop(1, 'rgba(0,8,20,.5)'); g.fillStyle = sc; g.fillRect(0, H - BAR - 300, W, 300);
+  let sc = g.createLinearGradient(0, H - BAR - 300, 0, H - BAR); sc.addColorStop(0, 'rgba(0,8,20,0)'); sc.addColorStop(1, 'rgba(0,8,20,.62)'); g.fillStyle = sc; g.fillRect(0, H - BAR - 300, W, 300);
   sc = g.createLinearGradient(0, BAR, 0, BAR + 200); sc.addColorStop(0, 'rgba(0,8,20,.3)'); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(0, BAR, W, 200);
   if (o.side) { sc = g.createLinearGradient(0, 0, 900, 0); sc.addColorStop(0, `rgba(0,8,20,${.45 * o.side})`); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(0, 0, 900, H); }
   if (o.right) { sc = g.createLinearGradient(W, 0, W - 900, 0); sc.addColorStop(0, `rgba(0,8,20,${.45 * o.right})`); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(W - 900, 0, 900, H); }
@@ -153,7 +153,7 @@ function textPlane(drawFn, w, h, pw = 2048, ph = 1024) {
 }
 function numberPlane(num, label, col = '#ffffff') {
   return textPlane((x, pw, ph) => {
-    x.textAlign = 'center'; x.shadowColor = 'rgba(0,25,60,.45)'; x.shadowBlur = 40; x.fillStyle = col; x.font = '200 620px Inter'; x.letterSpacing = '-10px'; x.fillText(num, pw / 2, 640);
+    x.textAlign = 'center'; x.fillStyle = col; x.font = '200 620px Inter'; x.letterSpacing = '-10px'; x.fillText(num, pw / 2, 640);
     x.font = '500 84px Inter'; x.letterSpacing = '22px'; x.fillStyle = 'rgba(255,255,255,.9)'; x.fillText(label, pw / 2, 850);
   }, 48, 24);
 }
@@ -819,7 +819,7 @@ function captions(sc, lt, k = 1) {
     const active = lt >= it.o.t && lt < it.o.e + .1;
     g.save(); g.translate(x + it.w / 2, y - (1 - eout(p)) * 22 - (1 - out) * 10); g.scale(sc2, sc2);
     g.globalAlpha = a; g.font = `${it.o.k ? 800 : 600} ${it.sz}px Inter`; g.textAlign = 'center';
-    g.shadowColor = 'rgba(0,0,0,.75)'; g.shadowBlur = 18; g.shadowOffsetY = 3;
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
     g.fillStyle = it.o.k ? KCOL[it.o.k] : (active ? '#fff' : 'rgba(255,255,255,.86)');
     g.fillText(it.o.w, 0, 0);
     if (it.o.k && active) { g.shadowColor = KCOL[it.o.k]; g.shadowBlur = 26; g.shadowOffsetY = 0; g.globalAlpha = a * .55; g.fillText(it.o.w, 0, 0); }
@@ -837,7 +837,7 @@ function KT(str, x, y, o, t0, lt) {
     const p = clamp((lt - t0 - i * stg) / .45); if (p <= 0) break;
     const px = x0 + g.measureText(str.slice(0, i)).width;
     g.save(); g.globalAlpha = a * clamp(p * 2); g.fillStyle = o.c || '#fff';
-    g.shadowColor = o.glow ? (o.glowC || o.c) : 'rgba(0,6,18,.7)'; g.shadowBlur = o.glow || 24;
+    g.shadowColor = o.glow ? (o.glowC || o.c) : 'transparent'; g.shadowBlur = o.glow || 0;
     g.translate(px, y + (1 - eout(p)) * (o.dy ?? 40)); g.textAlign = 'left'; g.fillText(str[i], 0, 0); g.restore();
   }
   g.restore();
