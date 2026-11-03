@@ -38,7 +38,12 @@ SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 def models():
     req = urllib.request.Request("https://api.elevenlabs.io/v1/models", headers={"xi-api-key": API_KEY})
-    with urllib.request.urlopen(req, timeout=60) as r:
+    try:
+        r = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"ElevenLabs HTTP {e.code}: a chave não tem permissão para listar modelos ({e.read().decode(errors='replace')[:200]}).\n"
+                 "Experimenta diretamente: --model eleven_v4  (ou eleven_v3)")
+    with r:
         for m in json.loads(r.read()):
             print(f'{m["model_id"]:32s} {m.get("name", "")}')
 
