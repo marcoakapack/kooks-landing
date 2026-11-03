@@ -14,6 +14,7 @@ const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ?
 const FPS = +arg('fps', 24);
 const OUT = path.resolve(ROOT, arg('out', 'out/video_silent.mp4'));
 const STILLS = arg('stills', null);
+const SCALE = +arg('scale', process.env.SCALE || 1);   // 2 → 3840×2160 (4K)
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
 const server = http.createServer((req, res) => {
@@ -27,7 +28,7 @@ const port = server.address().port;
 // Linux servers have no GPU: use SwiftShader. On a Mac/PC, use the real GPU (much faster).
 const GPU_ARGS = process.platform === 'linux' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist', '--enable-gpu'];
 const browser = await chromium.launch({ args: GPU_ARGS });
-const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: SCALE });
 page.on('console', m => { if (m.type() === 'error') console.error('[page]', m.text()); });
 page.on('pageerror', e => console.error('[pageerror]', e.message));
 await page.goto(`http://localhost:${port}/index.html`);
@@ -59,7 +60,7 @@ if (STILLS) {
 const F0 = Math.round(+arg('from', 0) * FPS), F1 = Math.min(Math.round(+arg('to', timeline.total) * FPS), Math.floor(timeline.total * FPS));
 const N = F1 - F0, from = F0 / FPS;
 const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
-  '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUT], { stdio: ['pipe', 'inherit', 'inherit'] });
+  '-c:v', 'libx264', '-preset', 'medium', '-crf', SCALE > 1 ? '17' : '19', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUT], { stdio: ['pipe', 'inherit', 'inherit'] });
 const t0 = Date.now();
 for (let i = 0; i < N; i++) {
   const t = from + i / FPS;
