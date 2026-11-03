@@ -4,12 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "render": "./render_all.sh",
+    "mux": "python3 mux.py"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
   }
 }
