@@ -77,7 +77,7 @@ def bed_loop(x, a, b, gain, xf=1.5):
 sc_by = {s["id"]: s for s in tl["scenes"]}
 def S(sid, k): s = sc_by[sid]; ss_ = s.get("sentence_starts", []); return s["start"] + (ss_[k] if k < len(ss_) else s["dur"])
 AMB = {"hook": [("amb_storm", .55)], "facts": [("amb_high", .5)], "storm": [("amb_storm", .7)], "ice": [("amb_cabin", .35)],
-       "coffin": [("amb_high", .5)], "dive": [("amb_storm", .6)], "outro": [("amb_high", .45)]}
+       "coffin": [("amb_high", .5)], "dive": [("amb_storm", .6)], "outro": [("amb_high", .25)]}
 for s in tl["scenes"]:
     for name, gn in AMB.get(s["id"], []):
         if name in REAL: bed_loop(REAL[name], max(0, s["start"] - .8), s["start"] + s["dur"] + .8, gn)
