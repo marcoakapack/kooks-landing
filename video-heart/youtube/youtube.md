@@ -1,10 +1,7 @@
 # YouTube — How a Single Hit Can Stop a Heart
 
-## Title (recommended)
-Commotio Cordis Explained: How a Knee to the Chest Can Stop a Heart
-
-## Title (alternative, with name)
-Jesús de Miguel: What Is Commotio Cordis? The Physics of a Fatal Blow
+## Title
+What Is Commotio Cordis? The Physics of a Fatal Blow
 
 ## Description
 On Monday night, CD Tenerife forward Jesús de Miguel, 30, suffered cardiac arrest after a goalkeeper's knee struck his chest during Tenerife vs Andorra. He died the next day. Our thoughts are with his family, his teammates and everyone at CD Tenerife.
