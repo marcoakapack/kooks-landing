@@ -29,7 +29,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { wheelFigure, defibFigure, wheelPoint, defibPoint, WHEEL_SIZE, DEFIB_SIZE } from './anatomy/figures.mjs';
 
 /* ============================== UTIL ============================== */
 const W = 1920, H = 1080, BAR = 132, DPR = window.devicePixelRatio || 1;
@@ -480,29 +479,71 @@ function ecgBeat(x, y, w, h, prog, o = {}) {
   return X;
 }
 /* ============================== CHEST CROSS-SECTION (2D) ============================== */
+// anatomical heart, front view: base up-left, apex down-right (patient's left)
 function heartPath(cx, cy, s) {
-  g.beginPath(); g.moveTo(cx, cy + s * .9);
-  g.bezierCurveTo(cx - s * 1.25, cy + s * .1, cx - s * .95, cy - s * .95, cx - s * .1, cy - s * .55);
-  g.bezierCurveTo(cx + s * .55, cy - s * 1.05, cx + s * 1.3, cy - s * .2, cx + s * .2, cy + s * .75); g.closePath();
+  const P = (x, y) => [cx + x * s, cy + y * s];
+  g.beginPath(); g.moveTo(...P(-.62, -.42));
+  g.bezierCurveTo(...P(-.86, .05), ...P(-.62, .62), ...P(.05, .86));
+  g.bezierCurveTo(...P(.42, .98), ...P(.78, 1.0), ...P(.86, .86));
+  g.bezierCurveTo(...P(1.02, .45), ...P(.9, -.3), ...P(.42, -.58));
+  g.bezierCurveTo(...P(.12, -.74), ...P(-.36, -.7), ...P(-.62, -.42)); g.closePath();
+}
+function heartVessels(cx, cy, s, c, a) {   // aorta arch, pulmonary trunk, superior vena cava
+  const P = (x, y) => [cx + x * s, cy + y * s];
+  g.save(); g.globalAlpha = a; g.strokeStyle = c; g.lineCap = 'round';
+  g.lineWidth = .2 * s; g.globalAlpha = a * .7; g.beginPath(); g.moveTo(...P(-.42, -.45)); g.lineTo(...P(-.44, -1.0)); g.stroke(); g.globalAlpha = a;                                     // SVC
+  g.lineWidth = .22 * s; g.beginPath(); g.moveTo(...P(-.05, -.5)); g.bezierCurveTo(...P(-.1, -1.08), ...P(.5, -1.15), ...P(.56, -.85)); g.lineTo(...P(.58, -.6)); g.stroke();   // aorta
+  g.lineWidth = .18 * s; g.beginPath(); g.moveTo(...P(.25, -.52)); g.bezierCurveTo(...P(.28, -.75), ...P(.42, -.8), ...P(.66, -.74)); g.stroke();       // pulmonary trunk
+  g.restore();
 }
 function chest(cx, cy, o = {}) {
-  const a = o.a ?? 1; if (a <= .002) return; const s = o.s || 1;
-  g.save(); g.globalAlpha = a; g.translate(cx, cy); g.scale(s, s);
-  // torso outline (front view)
-  g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 3; g.beginPath();
-  g.moveTo(-230, -260); g.bezierCurveTo(-300, -200, -300, 120, -240, 300); g.moveTo(230, -260); g.bezierCurveTo(300, -200, 300, 120, 240, 300); g.stroke();
-  // ribs
-  for (let i = 0; i < 7; i++) { const yy = -200 + i * 62, w2 = 200 + Math.sin(i / 6 * Math.PI) * 40; for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(sd * 22, yy); g.quadraticCurveTo(sd * w2 * .8, yy - 30, sd * w2, yy + 60); g.strokeStyle = 'rgba(223,244,255,.45)'; g.lineWidth = 9; g.lineCap = 'round'; g.stroke(); } }
-  g.fillStyle = 'rgba(223,244,255,.5)'; g.fillRect(-18, -230, 36, 330);   // sternum
-  // heart behind, slightly left of the viewer's centre... (patient's left = viewer's right)
-  const hb = o.beat || 0, hx = 40, hy = 20, hs = 110 * (1 - hb * .06);
-  g.save(); g.globalAlpha = a * .95; heartPath(hx, hy, hs); const gr = g.createRadialGradient(hx - 20, hy - 30, 10, hx, hy, hs * 1.3); gr.addColorStop(0, o.flash ? '#ffd0d0' : '#ff5a66'); gr.addColorStop(1, '#5a0a12');
-  g.fillStyle = gr; g.shadowColor = o.vf ? CYAN : RED; g.shadowBlur = (30 + (o.vf || 0) * 30) * DPR; g.fill(); g.restore();
-  if (o.vf) { g.save(); g.globalAlpha = a * o.vf; heartPath(hx, hy, hs); g.clip(); for (let i = 0; i < 6; i++) { const t0 = (o.t || 0) * 3 + i * 1.7; dot(hx + Math.sin(t0 * 2.3) * 70, hy + Math.cos(t0 * 1.7) * 60, 26, CYAN, .5, 30); } g.restore(); }
-  if (o.target) { const r = 70 + Math.sin((o.t || 0) * 5) * 4; g.save(); g.globalAlpha = a * o.target; g.strokeStyle = AMBER; g.lineWidth = 3; g.setLineDash([10, 8]); g.beginPath(); g.arc(hx - 20, hy - 10, r, 0, 7); g.stroke(); g.setLineDash([]); g.beginPath(); g.moveTo(hx - 20 - r - 20, hy - 10); g.lineTo(hx - 20 - r + 20, hy - 10); g.moveTo(hx - 20 + r - 20, hy - 10); g.lineTo(hx - 20 + r + 20, hy - 10); g.stroke(); g.restore(); }
-  // impactor (ball) + pressure rings
-  if (o.ball !== undefined && o.ball > 0) { const u = clamp(o.ball), bx = lerp(620, 30, eio(Math.min(u, 1))), by = lerp(-160, -10, eio(Math.min(u, 1))); if (u < 1) dot(bx, by, 46, '#fff', 1, 20); }
-  if (o.ring > 0) for (let k = 0; k < 3; k++) { const q = o.ring - k * .12; if (q <= 0 || q > 1) continue; g.save(); g.globalAlpha = a * (1 - q); g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.arc(20, -10, 30 + q * 260, 0, 7); g.stroke(); g.restore(); }
+  const a = o.a ?? 1; if (a <= .002) return; const s = o.s || 1, t = o.t || 0;
+  g.save(); g.globalAlpha = a; g.translate(cx, cy); g.scale(s, s); g.lineCap = 'round'; g.lineJoin = 'round';
+  // body silhouette: neck, shoulders, torso, fading out at the waist
+  const body = g.createLinearGradient(0, -380, 0, 360); body.addColorStop(0, 'rgba(111,216,255,.07)'); body.addColorStop(.8, 'rgba(111,216,255,.04)'); body.addColorStop(1, 'rgba(111,216,255,0)');
+  g.beginPath(); g.moveTo(-62, -420); g.bezierCurveTo(-60, -370, -80, -350, -150, -335); g.bezierCurveTo(-280, -315, -335, -290, -345, -215);
+  g.bezierCurveTo(-345, -120, -300, -40, -290, 60); g.bezierCurveTo(-282, 160, -300, 260, -290, 360); g.lineTo(290, 360);
+  g.bezierCurveTo(300, 260, 282, 160, 290, 60); g.bezierCurveTo(300, -40, 345, -120, 345, -215); g.bezierCurveTo(335, -290, 280, -315, 150, -335);
+  g.bezierCurveTo(80, -350, 60, -370, 62, -420);
+  g.fillStyle = body; g.fill();
+  const edge = g.createLinearGradient(0, 120, 0, 360); edge.addColorStop(0, 'rgba(160,220,255,.5)'); edge.addColorStop(1, 'rgba(160,220,255,0)');
+  g.strokeStyle = edge; g.lineWidth = 2.5; g.stroke();
+  // lungs (soft, behind the ribs)
+  for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(sd * 40, -250); g.bezierCurveTo(sd * 150, -290, sd * 250, -150, sd * 255, 40); g.bezierCurveTo(sd * 258, 150, sd * 220, 215, sd * 150, 205);
+    g.bezierCurveTo(sd * 90, 200, sd * 55, 150, sd * (sd > 0 ? 150 : 50), sd > 0 ? 60 : 80); g.bezierCurveTo(sd * 45, -40, sd * 40, -150, sd * 40, -250);
+    const lg = g.createRadialGradient(sd * 150, -40, 20, sd * 150, -40, 260); lg.addColorStop(0, 'rgba(111,216,255,.10)'); lg.addColorStop(1, 'rgba(111,216,255,.02)'); g.fillStyle = lg; g.fill(); g.strokeStyle = 'rgba(111,216,255,.18)'; g.lineWidth = 1.5; g.stroke(); }
+  // heart (behind the sternum, apex toward the patient's left = viewer's right)
+  const hb = o.beat || 0, hx = 45, hy = 75, hs = 118 * (1 - hb * .07);
+  heartVessels(hx, hy, hs, o.flash ? '#ffd0d0' : '#8e1f2b', .85);
+  g.save(); heartPath(hx, hy, hs); const gr = g.createRadialGradient(hx - 30, hy - 40, 10, hx + 10, hy + 10, hs * 1.4);
+  gr.addColorStop(0, o.flash ? '#ffe2e2' : '#ff6b74'); gr.addColorStop(.55, o.flash ? '#ff9aa2' : '#d02c3a'); gr.addColorStop(1, '#4a0810');
+  g.fillStyle = gr; g.shadowColor = RED; g.shadowBlur = (26 + hb * 30) * DPR; g.fill(); g.shadowBlur = 0;
+  g.strokeStyle = 'rgba(255,190,195,.55)'; g.lineWidth = 2; g.stroke();
+  // interventricular groove + a coronary branch
+  g.strokeStyle = 'rgba(90,10,20,.7)'; g.lineWidth = 4; g.beginPath(); g.moveTo(hx + .28 * hs, hy - .55 * hs); g.bezierCurveTo(hx + .2 * hs, hy - .05 * hs, hx + .35 * hs, hy + .5 * hs, hx + .62 * hs, hy + .9 * hs); g.stroke();
+  g.lineWidth = 2.5; g.beginPath(); g.moveTo(hx - .5 * hs, hy - .2 * hs); g.bezierCurveTo(hx - .55 * hs, hy + .3 * hs, hx - .2 * hs, hy + .65 * hs, hx + .1 * hs, hy + .8 * hs); g.stroke();
+  if (o.vf) { heartPath(hx, hy, hs); g.clip(); const r = rng(Math.floor(t * 30)); for (let k = 0; k < 16; k++) { const px = hx + (r() - .4) * hs * 1.4, py = hy + (r() - .45) * hs * 1.4, pts = []; for (let m = 0; m < 5; m++) pts.push([px + m * 9, py + (r() - .5) * 22]); L(pts, { c: CYAN, lw: 2.5, glow: 16, a: o.vf * (.4 + .6 * r()) }); } }
+  g.restore();
+  // ribs: 9 pairs, back arc then forward to the costal cartilage
+  for (let i = 0; i < 8; i++) {
+    const yy = -238 + i * 50, w2 = 150 + Math.sin(Math.min(1, (i + 2) / 9) * Math.PI * .62) * 120, drop = 46 + i * 3, al = .55 - i * .02;
+    for (const sd of [-1, 1]) {
+      g.strokeStyle = `rgba(223,244,255,${al})`; g.lineWidth = 7; g.beginPath(); g.moveTo(sd * 44, yy + 8); g.bezierCurveTo(sd * w2 * .55, yy - 30, sd * w2, yy - 10, sd * (w2 + 8), yy + drop); g.stroke();
+    }
+  }
+  // costal margin: cartilage arch from the xiphoid out to the lower ribs
+  for (const sd of [-1, 1]) { g.strokeStyle = 'rgba(223,244,255,.3)'; g.lineWidth = 5; g.beginPath(); g.moveTo(sd * 14, 180); g.bezierCurveTo(sd * 90, 200, sd * 200, 175, sd * 262, 168); g.stroke(); }
+  // clavicles
+  for (const sd of [-1, 1]) { g.strokeStyle = 'rgba(223,244,255,.6)'; g.lineWidth = 9; g.beginPath(); g.moveTo(sd * 38, -268); g.bezierCurveTo(sd * 110, -290, sd * 170, -255, sd * 270, -282); g.stroke(); }
+  // sternum: manubrium, body, xiphoid
+  g.beginPath(); g.moveTo(-38, -272); g.lineTo(38, -272); g.lineTo(30, -215); g.lineTo(26, 150); g.lineTo(12, 172); g.lineTo(0, 205); g.lineTo(-12, 172); g.lineTo(-26, 150); g.lineTo(-30, -215); g.closePath();
+  g.fillStyle = 'rgba(223,244,255,.32)'; g.fill(); g.strokeStyle = 'rgba(223,244,255,.6)'; g.lineWidth = 2; g.stroke();
+  L([[-27, -212], [27, -212]], { c: 'rgba(223,244,255,.5)', lw: 2 });
+  // target, impactor, pressure rings (over the heart, left of the sternum's lower half)
+  const tx = 30, ty = 40;
+  if (o.target) { const r = 80 + Math.sin(t * 5) * 4; g.save(); g.globalAlpha = a * o.target; g.strokeStyle = CYAN; g.lineWidth = 3; g.setLineDash([10, 8]); g.beginPath(); g.arc(tx, ty, r, 0, 7); g.stroke(); g.setLineDash([]); g.beginPath(); g.moveTo(tx - r - 20, ty); g.lineTo(tx - r + 20, ty); g.moveTo(tx + r - 20, ty); g.lineTo(tx + r + 20, ty); g.moveTo(tx, ty - r - 20); g.lineTo(tx, ty - r + 20); g.moveTo(tx, ty + r - 20); g.lineTo(tx, ty + r + 20); g.stroke(); g.restore(); }
+  if (o.ball !== undefined && o.ball > 0) { const u = clamp(o.ball), bx = lerp(620, tx, eio(u)), by = lerp(-180, ty, eio(u)); if (u < 1) { dot(bx, by, 46, '#fff', 1, 20); g.save(); g.globalAlpha = .5; g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 3; g.beginPath(); g.arc(bx, by, 46, -.6, .9); g.stroke(); g.restore(); } }
+  if (o.ring > 0) for (let k = 0; k < 3; k++) { const q = o.ring - k * .12; if (q <= 0 || q > 1) continue; g.save(); g.globalAlpha = a * (1 - q); g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.arc(tx, ty, 30 + q * 260, 0, 7); g.stroke(); g.restore(); }
   g.restore();
 }
 /* ============================== CELL GRID (repolarisation is uneven) ============================== */
@@ -518,52 +559,47 @@ function cells(x, y, cols, rows, sz, prog, a, o = {}) {
 }
 function tag(txt, x, y, a, c = AMBER, al = 'left') { T(txt, x, y, { s: 20, w: 700, ls: 6, c, a, al }); }
 
-/* ============================== ANATOMY FIGURES (isometric machines) ============================== */
-// A scene's FIGPLAN returns the figure for this frame; renderFrame decodes it before the scene draws.
-let FIG = null;
-async function loadFig(plan) {
-  const svg = plan.svg.replace('<svg', `<svg width="${Math.round(plan.w * DPR)}" height="${Math.round(plan.h * DPR)}"`);
-  const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); await img.decode(); return { ...plan, img };
-}
-function studio(t, a = 1) {   // background for figure shots: deep navy, soft pool of light, no 3D
+/* ============================== 2D STAGES (no 3D heart) ============================== */
+function studio(t, a = 1) {   // deep navy background, soft pool of light
   clearGL(); g.save(); g.globalAlpha = a;
   const gr = g.createRadialGradient(W / 2, H * .55, 50, W / 2, H * .55, W * .7); gr.addColorStop(0, '#0d1626'); gr.addColorStop(1, '#03050a');
   g.fillStyle = gr; g.fillRect(0, 0, W, H); g.restore();
 }
-function drawFig(a = 1, zoom = 0) {
-  if (!FIG || a <= .002) return; const z = 1 + zoom, cx = FIG.x + FIG.w / 2, cy = FIG.y + FIG.h / 2;
-  g.save(); g.globalAlpha = a; g.translate(cx, cy); g.scale(z, z); g.translate(-cx, -cy); g.drawImage(FIG.img, FIG.x, FIG.y, FIG.w, FIG.h); g.restore();
-}
-const figAt = ([u, v], zoom = 0) => { const z = 1 + zoom, cx = FIG.x + FIG.w / 2, cy = FIG.y + FIG.h / 2; return [cx + (FIG.x + u * FIG.w - cx) * z, cy + (FIG.y + v * FIG.h - cy) * z]; };
 function glowAt(x, y, r, c, a) { if (a <= .002) return; g.save(); g.globalCompositeOperation = 'lighter'; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, c); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = a; g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); }
-// timing wheel, slowed so a beat is readable: one turn every 2.4 s
-const WHEEL_TURN = 2.4;
-// impact part 2: three strikes; the third lands in the window
+// impact part 2: the same hit at three moments of the beat; the third lands in the window
 const STRIKES_AT = [.9, 2.6, 4.3];
-function wheelStrikeState(q) {
-  // phase chosen so that strike 3 lands mid-window (.46), strikes 1-2 outside it
-  const phase = ((q - STRIKES_AT[2]) / WHEEL_TURN + .46 + 10) % 1;
-  let lift = 1, hitK = -1, since = 99;
-  STRIKES_AT.forEach((s, i) => { const d = q - s; if (d > -.18 && d < .5) { lift = Math.min(lift, d < 0 ? ss(0, -.18, d) : ss(.12, .5, d)); } if (d >= 0) { hitK = i; since = d; } });
-  if (hitK === 2) lift = 0;
-  return { phase, lift, hitK, since };
+const HITS = [{ ph: .27, label: 'OUTSIDE · NOTHING' }, { ph: .74, label: 'OUTSIDE · NOTHING' }, { ph: .46, label: 'INSIDE THE WINDOW', vf: true }];
+// one sweeping ECG strip with every beat's vulnerable window shaded and a hit marker
+function hitStrip(x, y, w, h, q, hit, a) {
+  if (a <= .002) return; const span = 2.6, sweep = 1.5, tHit = 1.35, bps = BPM / 60;
+  const ph0 = ((hit.ph - tHit * bps) % 1 + 1) % 1, prog = clamp(q / sweep), tNow = span * prog;
+  const X = tt => x + w * tt / span;
+  for (let n = -1; n < 4; n++) { const t1 = (n + .44 - ph0) / bps, t2 = (n + .482 - ph0) / bps; if (t2 < 0 || t1 > span) continue;
+    g.save(); g.globalAlpha = a * .55; g.fillStyle = 'rgba(255,74,85,.35)'; g.fillRect(X(Math.max(0, t1)), y - h * 1.15, X(Math.min(span, t2)) - X(Math.max(0, t1)), h * 1.7); g.restore(); }
+  L([[x, y + h * .55], [x + w, y + h * .55]], { c: 'rgba(255,255,255,.15)', lw: 1, a });
+  const pts = [], N = Math.round(w / 3);
+  for (let i = 0; i <= N; i++) { const tt = span * i / N; if (tt > tNow) break; let v = ecgVal(phaseAt(tt, BPM, ph0)); if (hit.vf && tt > tHit + .05) v = vfVal(tt * 1.4) * Math.min(1, (tt - tHit - .05) * 5); pts.push([X(tt), y - v * h]); }
+  const red = hit.vf && tNow > tHit + .05;
+  if (pts.length > 1) { L(pts, { c: red ? RED : GREEN, lw: 3, glow: 14, a }); const e = pts[pts.length - 1]; dot(e[0], e[1], 6, '#fff', a, 20); }
+  if (tNow >= tHit) { const d = (tNow - tHit) * span / sweep / span * sweep, hx = X(tHit);
+    L([[hx, y - h * 1.3], [hx, y + h * .7]], { c: '#fff', lw: 2.5, a: a * .9, dash: [8, 6] });
+    const qq = q - tHit / span * sweep; if (qq < .7) { g.save(); g.globalAlpha = a * (1 - qq / .7); g.strokeStyle = hit.vf ? RED : '#fff'; g.lineWidth = 3; g.beginPath(); g.arc(hx, y - h * .2, 14 + qq * 120, 0, 7); g.stroke(); g.restore(); }
+    T('HIT', hx, y - h * 1.45, { s: 16, w: 700, ls: 4, al: 'center', c: '#fff', a: a * ss(0, .2, qq) }); }
 }
-const FIGPLAN = {
-  window(lt, sc) {
-    const s = sc.S, c1 = s(3) - .05; if (lt >= c1) return null;
-    return { svg: wheelFigure({ phase: (lt / WHEEL_TURN) % 1, lift: 1, sector: ss(s(1) + .3, s(1) + 1.2, lt) }), x: 740, y: 140, w: 1120, h: 851 };
-  },
-  impact(lt, sc) {
-    const s = sc.S, c1 = s(4) - .05, c2 = s(6) - .05; if (lt < c1 || lt >= c2) return null;
-    const st = wheelStrikeState(lt - c1), red = st.hitK === 2;
-    return { svg: wheelFigure({ ...st, lamp: st.hitK >= 0 && st.since < (red ? 99 : .8) ? 1 : 0, lampColor: red ? 'red' : 'green' }), x: 250, y: 110, w: 1200, h: 912, st };
-  },
-  aed(lt, sc) {
-    const s = sc.S, c1 = s(5) - .05, shock = s(5) + 2.6; if (lt < c1) return null;
-    const charge = lt < shock ? ss(c1 + .3, shock - .2, lt) : Math.max(0, 1 - (lt - shock) / .12), flash = lt >= shock ? Math.exp(-(lt - shock) * 3) : 0;
-    return { svg: defibFigure({ charge, flash, ready: lt < shock ? ss(shock - .6, shock - .2, lt) : 0 }), x: 0, y: 140, w: 1150, h: 828 };
-  },
-};
+// a torso with two defibrillator pads; o.charge 0..1, o.zap 0..1 (current between the pads)
+function padsOnChest(cx, cy, o = {}) {
+  const a = o.a ?? 1, s = o.s || 1; if (a <= .002) return;
+  const P = [[-150, -150, -.35], [215, 150, .5]];
+  g.save(); g.translate(cx, cy); g.scale(s, s);
+  // leads, running down out of frame
+  P.forEach(([px, py], i) => { g.save(); g.globalAlpha = a * .6; g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 3; g.beginPath(); g.moveTo(px, py + 50); g.bezierCurveTo(px + (i ? 40 : -120), py + 260, i ? 120 : -220, 380, i ? 60 : -60, 520); g.stroke(); g.restore(); });
+  if (o.zap > .01) { const r = rng(Math.floor((o.t || 0) * 40)); for (let k = 0; k < 3; k++) { const pts = []; for (let i = 0; i <= 14; i++) { const u = i / 14; pts.push([lerp(P[0][0], P[1][0], u) + (r() - .5) * 70 * Math.sin(u * Math.PI), lerp(P[0][1], P[1][1], u) + (r() - .5) * 70 * Math.sin(u * Math.PI)]); } g.save(); g.translate(0, 0); L(pts, { c: CYAN, lw: 4 - k, glow: 30, a: a * o.zap * (1 - k * .25) }); g.restore(); } }
+  P.forEach(([px, py, rot]) => { g.save(); g.translate(px, py); g.rotate(rot); g.globalAlpha = a;
+    g.fillStyle = 'rgba(14,22,38,.92)'; g.strokeStyle = o.zap > .01 ? CYAN : 'rgba(255,255,255,.85)'; g.lineWidth = 3; if (o.charge > 0) { g.shadowColor = CYAN; g.shadowBlur = (8 + 30 * (o.charge || 0) + 60 * (o.zap || 0)) * DPR; }
+    g.beginPath(); g.roundRect(-80, -52, 160, 104, 18); g.fill(); g.stroke(); g.shadowBlur = 0;
+    g.globalAlpha = a * (.25 + .6 * (o.charge || 0)); g.fillStyle = CYAN; g.beginPath(); g.roundRect(-60, -34, 120, 68, 10); g.fill(); g.restore(); });
+  g.restore();
+}
 
 /* ============================== SCENES ============================== */
 const heart = makeHeart(), pitch = makePitch();
@@ -676,13 +712,13 @@ const SCENES = {
   window(lt, sc, t) {
     const s = sc.S, c1 = s(3) - .05, c2 = s(5) - .05;
     if (lt < c1) {
-      studio(t); const zf = .04 * seg(lt, 0, c1); drawFig(ss(0, .5, lt), zf);
-      { const [hx, hy] = figAt(wheelPoint('hammer'), zf); glowAt(hx, hy, 90, 'rgba(255,74,85,.5)', ss(s(1) + .3, s(1) + 1.2, lt) * (.5 + .5 * Math.sin(lt * 5))); }
-      post(t);
-      tag('ONE TURN = ONE HEARTBEAT', 150, 300, ss(.3, .8, lt), CYAN);
-      const wk = ss(s(1) + .3, s(1) + 1.2, lt), X = ecgBeat(150, 560, 640, 160, clamp(seg(lt, 0, 2.2)), { win: wk });
-      if (wk > 0) { tag('VULNERABLE WINDOW', X(.445), 360, wk, RED, 'center'); bigNum('10–40', 'MILLISECONDS', 470, 800, ss(s(1) + 1.6, s(1) + 2.2, lt) * (1 - ss(s(2) - .2, s(2) + .2, lt)), { al: 'center', s: 90, uc: RED }); }
-      bigNum('1–3%', 'OF EACH HEARTBEAT', 470, 800, ss(s(2), s(2) + .5, lt), { al: 'center', s: 110, uc: CYAN });
+      studio(t); post(t);
+      tag('ONE HEARTBEAT', 150, 250, ss(.3, .8, lt), CYAN);
+      const wk = ss(s(1) + .3, s(1) + 1.2, lt), X = ecgBeat(150, 600, 1620, 200, clamp(seg(lt, 0, 2.6)), { win: wk, labels: true });
+      if (wk > 0) { const wx = (X(.44) + X(.482)) / 2; glowAt(wx, 520, 160, 'rgba(255,74,85,.35)', wk * (.6 + .4 * Math.sin(lt * 4))); tag('VULNERABLE WINDOW', wx, 352, wk, RED, 'center');
+        bigNum('10–40', 'MILLISECONDS', X(.53), 480, ss(s(1) + 1.6, s(1) + 2.2, lt) * (1 - ss(s(2) - .2, s(2) + .2, lt)), { s: 100, uc: RED }); }
+      { const X0 = X(.02), X1 = X(.72), ba = ss(s(2), s(2) + .5, lt); if (ba > 0) { L([[X0, 790], [X1, 790]], { c: 'rgba(255,255,255,.5)', lw: 2, a: ba }); L([[X0, 778], [X0, 802]], { c: 'rgba(255,255,255,.5)', lw: 2, a: ba }); L([[X1, 778], [X1, 802]], { c: 'rgba(255,255,255,.5)', lw: 2, a: ba }); L([[X(.44), 790], [X(.482), 790]], { c: RED, lw: 8, glow: 16, a: ba });
+        bigNum('1–3%', 'OF EACH HEARTBEAT', X(.53), 480, ba, { s: 110, uc: CYAN }); } }
       return { cuts: [c1, c2] };
     }
     if (lt < c2) {
@@ -719,17 +755,13 @@ const SCENES = {
       return { cuts: [c1, c2] };
     }
     if (lt < c2) {
-      // same hit, two timings
-      studio(t); const a1 = ss(c1, c1 + .4, lt), zf = .05 * seg(lt, c1, c2); drawFig(a1, zf); const st = FIG.st, q = lt - c1;
-      tag('SAME HIT · DIFFERENT MOMENT', 1420, 330, a1, CYAN);
-      if (st.hitK >= 0) {
-        const red = st.hitK === 2, [hx, hy] = figAt(wheelPoint('hammer'), zf), [lx, ly] = figAt(wheelPoint('lamp'), zf);
-        if (st.since < .7) { g.save(); g.globalAlpha = 1 - st.since / .7; g.strokeStyle = red ? RED : '#fff'; g.lineWidth = 3; g.beginPath(); g.ellipse(hx, hy, 20 + st.since * 200, (20 + st.since * 200) * .55, 0, 0, 7); g.stroke(); g.restore(); }
-        glowAt(lx, ly, red ? 160 : 90, red ? 'rgba(255,74,85,.9)' : 'rgba(108,242,176,.8)', red ? 1 : Math.max(0, 1 - st.since / .8));
-        STRIKES_AT.forEach((sAt, i) => { if (q >= sAt) T(i === 2 ? 'INSIDE THE WINDOW' : 'OUTSIDE · NOTHING', 1420, 420 + i * 70, { s: 26, w: 800, ls: 4, c: i === 2 ? RED : GREEN, a: ss(sAt, sAt + .25, q) }); });
-        STRIKES_AT.forEach((sAt, i) => { if (q >= sAt) T(`HIT ${i + 1}`, 1420, 392 + i * 70, { s: 16, w: 600, ls: 4, c: 'rgba(255,255,255,.55)', a: ss(sAt, sAt + .25, q) }); });
-      }
-      post(t);
+      // same hit, three moments: only the one inside the window starts fibrillation
+      studio(t); post(t); const q = lt - c1;
+      tag('SAME HIT · DIFFERENT MOMENT', W / 2, 250, ss(c1, c1 + .4, lt), CYAN, 'center');
+      HITS.forEach((h, i) => { const st = STRIKES_AT[i] - .85, a = ss(st, st + .3, q), y = 400 + i * 175;
+        hitStrip(560, y, 1200, 62, q - st, h, a);
+        T(`HIT ${i + 1}`, 150, y - 22, { s: 18, w: 600, ls: 4, c: 'rgba(255,255,255,.6)', a });
+        T(h.label, 150, y + 14, { s: 28, w: 800, ls: 3, c: h.vf ? RED : GREEN, a: a * ss(STRIKES_AT[i], STRIKES_AT[i] + .3, q) }); });
       return { cuts: [c1, c2], capOff: true };
     }
     // a survivor's story (text only)
@@ -760,12 +792,13 @@ const SCENES = {
       return { cuts: [c1], capK: 1 };
     }
     // the shock
-    studio(t); const zf = .05 * seg(lt, c1, sc.dur); drawFig(ss(c1, c1 + .4, lt), zf);
-    const fl = lt >= shock ? Math.exp(-(lt - shock) * 3) : 0, [p0x, p0y] = figAt(defibPoint('pad0'), zf), [p1x, p1y] = figAt(defibPoint('pad1'), zf), [bx, by] = figAt(defibPoint('btn'), zf);
-    glowAt(p0x, p0y, 180, 'rgba(111,216,255,.9)', fl); glowAt(p1x, p1y, 180, 'rgba(111,216,255,.9)', fl);
-    glowAt(bx, by, 70, 'rgba(255,74,85,.8)', lt < shock ? ss(shock - .6, shock - .2, lt) * (.6 + .4 * Math.sin(lt * 14)) : 0);
-    post(t);
-    if (lt > shock && lt < shock + .25) { g.fillStyle = `rgba(255,255,255,${.5 * (1 - (lt - shock) / .25)})`; g.fillRect(0, 0, W, H); }
+    studio(t); post(t);
+    const fl = lt >= shock ? Math.exp(-(lt - shock) * 3) : 0, ca = ss(c1, c1 + .5, lt), after = lt - shock - .3;
+    const hb = after > 0 ? Math.exp(-Math.pow((phaseAt(after, BPM, .02) - .2) / .08, 2)) : 0;
+    chest(640, 520, { s: 1.05, a: ca, vf: lt < shock ? 1 : 0, flash: fl > .3, beat: hb, t: lt });
+    padsOnChest(640, 520, { s: 1.05, a: ca * ss(c1 + .2, c1 + .7, lt), charge: lt < shock ? ss(c1 + .3, shock - .2, lt) : Math.max(0, 1 - (lt - shock) / .4), zap: lt >= shock ? Math.exp(-(lt - shock) * 5) : 0, t: lt });
+    glowAt(660, 520, 420, 'rgba(111,216,255,.8)', fl);
+    if (lt > shock && lt < shock + .25) { g.fillStyle = `rgba(200,240,255,${.22 * (1 - (lt - shock) / .25)})`; g.fillRect(0, 0, W, H); }
     tag('DEFIBRILLATOR', 1180, 330, ss(c1 + .3, c1 + .8, lt), CYAN);
     const J = Math.round(200 * (lt < shock ? ss(c1 + .3, shock - .2, lt) : Math.max(0, 1 - (lt - shock) / .12)));
     bigNum(lt < shock ? `${J} J` : 'SHOCK', lt < shock ? 'CHARGING' : 'DELIVERED', 1180, 500, ss(c1 + .5, c1 + 1, lt), { s: 110 });
@@ -798,7 +831,6 @@ async function renderFrame(t) {
   t = clamp(t, 0, TOTAL - 1e-4);
   let sc = SC[0]; for (const s of SC) if (t >= s.start) sc = s;
   const lt = t - sc.start;
-  const plan = FIGPLAN[sc.id] && FIGPLAN[sc.id](lt, sc); FIG = plan ? await loadFig(plan) : null;
   g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   const res = SCENES[sc.id](lt, sc, t) || {};
   captions(sc, lt, res.capOff ? 0 : (res.capK ?? 1));
