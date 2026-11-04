@@ -42,7 +42,7 @@ This video is for education only and is not medical advice. If someone collapses
 
 #commotiocordis #JesusDeMiguel #CDTenerife
 
-## Tags (≈480 characters, under YouTube's 500 limit)
+## Tags (434 characters, under the 500 limit)
 commotio cordis, Jesús de Miguel, Jesus de Miguel Tenerife, Tenerife Andorra, Owono, footballer cardiac arrest, goalkeeper collision, knee to the chest, blow to the chest, cardiac arrest football, qué es la commotio cordis, muere Jesús de Miguel, paro cardíaco fútbol, ventricular fibrillation, sudden cardiac arrest athlete, AED, defibrillator, CPR, heart physics, ECG explained, how the heart works, science explained, redacted room
 
 ## Pinned comment
