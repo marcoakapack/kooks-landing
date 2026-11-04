@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One Hit — Commotio Cordis</title>
+<style>
+  @font-face{font-family:Inter;font-weight:200;font-style:normal;src:url(fonts/Inter-ExtraLight.otf)}
+  @font-face{font-family:Inter;font-weight:300;font-style:normal;src:url(fonts/Inter-Light.otf)}
+  @font-face{font-family:Inter;font-weight:400;font-style:normal;src:url(fonts/Inter-Regular.otf)}
+  @font-face{font-family:Inter;font-weight:500;font-style:normal;src:url(fonts/Inter-Medium.otf)}
+  @font-face{font-family:Inter;font-weight:600;font-style:normal;src:url(fonts/Inter-SemiBold.otf)}
+  @font-face{font-family:Inter;font-weight:700;font-style:normal;src:url(fonts/Inter-Bold.otf)}
+  @font-face{font-family:Inter;font-weight:800;font-style:normal;src:url(fonts/Inter-ExtraBold.otf)}
+  @font-face{font-family:Inter;font-weight:900;font-style:normal;src:url(fonts/Inter-Black.otf)}
+  @font-face{font-family:Inter;font-weight:300;font-style:italic;src:url(fonts/Inter-LightItalic.otf)}
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
+  canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+  #gl{filter:contrast(1.14) saturate(1.18) brightness(.97)}
+</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<canvas id="ov" width="1920" height="1080"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ============================== UTIL ============================== */
+const W = 1920, H = 1080, BAR = 132, DPR = window.devicePixelRatio || 1;
+// ?gl=1 → 3D layer at 1080p (upscaled), text/graphics layer at full DPR: ~4× faster 4K renders on CPU-only machines
+const GLDPR = Math.min(DPR, +(new URLSearchParams(location.search).get('gl') || DPR));
+for (const [id, d] of [['gl', GLDPR], ['ov', DPR]]) { const c = document.getElementById(id); c.width = W * d; c.height = H * d; }
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const seg = (x, a, b) => clamp((x - a) / (b - a));
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eout = t => 1 - Math.pow(1 - t, 3);
+const ein = t => t * t * t;
+const wrap = (v, a, b) => a + ((((v - a) % (b - a)) + (b - a)) % (b - a));
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const fmt = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const win = (lt, a, b, fi = .6, fo = .6) => ss(a, a + fi, lt) * (1 - ss(b - fo, b, lt));
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const lerpArr = (a, b, u) => a.map((v, i) => lerp(v, b[i], u));
+function lerpShot(A, B, u) { const o = {}; for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) { const a = A[k] ?? B[k], b = B[k] ?? A[k]; o[k] = Array.isArray(a) ? lerpArr(a, b, u) : (typeof a === 'number' ? lerp(a, b, u) : (u < .5 ? a : b)); } return o; }
+const AMBER = '#FFB547', CYAN = '#6FD8FF', RED = '#FF4A55', GREEN = '#6CF2B0', ICE = '#DFF4FF';
+
+/* ============================== RENDERER ============================== */
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(GLDPR); renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+const composer = new EffectComposer(renderer); composer.setPixelRatio(GLDPR); composer.setSize(W, H);
+const rpass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera()); composer.addPass(rpass);
+const bloom = new UnrealBloomPass(new THREE.Vector2(W / 2, H / 2), .7, .55, .8); composer.addPass(bloom);
+composer.addPass(new OutputPass());
+function draw(scene, cam, b = .7, th = .8) { rpass.scene = scene; rpass.camera = cam; bloom.enabled = b > 0; bloom.strength = b; bloom.threshold = th; composer.render(); }
+function clearGL() { renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); }
+const pmrem = new THREE.PMREMGenerator(renderer);
+const g = document.getElementById('ov').getContext('2d');
+const GL = document.getElementById('gl');
+
+/* ============================== 2D HELPERS ============================== */
+function T(str, x, y, o = {}) {
+  const a = clamp(o.a ?? 1); if (a <= .002) return 0;
+  g.save(); g.globalAlpha = a;
+  g.font = `${o.it ? 'italic ' : ''}${o.w || 400} ${o.s || 40}px Inter, "Inter Display", sans-serif`;
+  g.fillStyle = o.c || '#fff'; g.textAlign = o.al || 'left'; g.textBaseline = 'alphabetic';
+  g.letterSpacing = (o.ls || 0) + 'px';
+  g.shadowColor = 'transparent'; g.shadowBlur = 0;
+  if (o.title) glowText(str, x, y); else g.fillText(str, x, y); const w = g.measureText(str).width; g.restore(); return w;
+}
+function L(pts, o = {}) {
+  const a = clamp(o.a ?? 1); if (a <= .002) return;
+  g.save(); g.globalAlpha = a; g.strokeStyle = o.c || '#fff'; g.lineWidth = o.lw || 1.5; g.lineCap = 'round'; g.lineJoin = 'round';
+  if (o.dash) g.setLineDash(o.dash); if (o.glow) { g.shadowColor = o.c; g.shadowBlur = (o.glow) * DPR; }
+  g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); g.restore();
+}
+function arrow(x1, y1, x2, y2, o = {}) {
+  const a = Math.atan2(y2 - y1, x2 - x1), hs = o.hs || 16; L([[x1, y1], [x2, y2]], o);
+  g.save(); g.globalAlpha = clamp(o.a ?? 1); g.fillStyle = o.c || '#fff'; if (o.glow) { g.shadowColor = o.c; g.shadowBlur = (o.glow) * DPR; }
+  g.beginPath(); g.moveTo(x2 + Math.cos(a) * 3, y2 + Math.sin(a) * 3); g.lineTo(x2 - Math.cos(a - .42) * hs, y2 - Math.sin(a - .42) * hs); g.lineTo(x2 - Math.cos(a + .42) * hs, y2 - Math.sin(a + .42) * hs); g.closePath(); g.fill(); g.restore();
+}
+function dot(x, y, r, c, a = 1, glow = 14) { if (a <= 0) return; g.save(); g.globalAlpha = clamp(a); g.fillStyle = c; g.shadowColor = c; g.shadowBlur = (glow) * DPR; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); }
+function proj(v, cam) { const p = v.clone().project(cam); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; }
+// callout: dot at 3D point, thin leader line, label
+function callout(v, cam, dx, dy, title, sub, a, c = '#fff') {
+  if (a <= .002) return; const [x, y, z] = proj(v, cam); if (z > 1) return;
+  const k = eout(clamp(a * 1.4)); const x2 = x + dx * k, y2 = y + dy * k;
+  dot(x, y, 5, c, a, 12); L([[x, y], [x2, y2], [x2 + Math.sign(dx || 1) * 40 * k, y2]], { c, lw: 1.4, a: a * .9 });
+  const al = dx < 0 ? 'right' : 'left', xx = x2 + Math.sign(dx || 1) * 52;
+  T(title, xx, y2 + 9, { s: 26, w: 600, ls: 3.5, c, al, a });
+  if (sub) T(sub, xx, y2 + 44, { s: 22, w: 300, ls: .5, c: 'rgba(255,255,255,.82)', al, a });
+}
+function lowerThird(title, sub, a) {
+  if (a <= .002) return; const k = eout(clamp(a * 1.3)), x = 150 - (1 - k) * 60, y = 262;
+  g.save(); g.globalAlpha = .55 * a; g.fillStyle = 'rgba(0,8,20,.55)'; g.fillRect(x - 24, y - 70, 40 + 820 * k, 132); g.restore();
+  L([[x, y - 46], [x + 90 * k, y - 46]], { c: AMBER, lw: 4, a });
+  T(title, x, y, { s: 36, w: 700, ls: 5, a });
+  if (sub) T(sub, x + (1 - k) * 30, y + 42, { s: 25, w: 400, ls: 1, c: 'rgba(255,255,255,.88)', a: a * k });
+}
+function radio(label, text, a) {
+  if (a <= .002) return; const k = eout(clamp(a * 1.3));
+  T(label, W / 2, 232, { s: 18, w: 600, ls: 5, al: 'center', c: AMBER, a });
+  T(text, W / 2, 300 + (1 - k) * 20, { s: 46, w: 300, it: true, al: 'center', a });
+  const pts = []; for (let i = 0; i < 60; i++) { const x = W / 2 - 150 + i * 5; pts.push([x, 196 + Math.sin(i * .9 + a * 40) * 6 * Math.sin(i / 60 * Math.PI) * (Math.sin(i * 2.3 + a * 13) + 1)]); }
+  L(pts, { c: AMBER, lw: 1.5, a: a * .7 });
+}
+function bigNum(str, unit, x, y, a, o = {}) {
+  if (a <= .002) return; const sz = o.s || 190;
+  const z = lerp(.82, 1, ebk(clamp(a))); g.save(); g.translate(x, y); g.scale(z, z); g.translate(-x, -y);
+  const w = T(str, x, y, { s: sz, w: 900, ls: -3, al: o.al || 'left', c: '#fff', a, title: true });
+  if (unit) T(unit, o.al === 'center' ? x : (o.al === 'right' ? x : x + 6), y + 56, { s: 24, w: 500, ls: 7, al: o.al || 'left', c: o.uc || 'rgba(255,255,255,.8)', a });
+  g.restore(); return w;
+}
+
+/* grain / vignette / letterbox */
+const GRAIN = Array.from({ length: 4 }, (_, k) => { const c = document.createElement('canvas'); c.width = c.height = 384; const x = c.getContext('2d'); const id = x.createImageData(384, 384); const r = rng(100 + k); for (let i = 0; i < id.data.length; i += 4) { const v = 128 + (r() + r() + r() - 1.5) * 120; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; } x.putImageData(id, 0, 0); return g.createPattern(c, 'repeat'); });
+function post(t, o = {}) {
+  // vignette
+  const vg = g.createRadialGradient(W / 2, H / 2, H * .32, W / 2, H / 2, H * 1.0);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${.5 * (o.vig ?? 1)})`); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  let sc = g.createLinearGradient(0, H - BAR - 300, 0, H - BAR); sc.addColorStop(0, 'rgba(0,8,20,0)'); sc.addColorStop(1, 'rgba(0,8,20,.62)'); g.fillStyle = sc; g.fillRect(0, H - BAR - 300, W, 300);
+  sc = g.createLinearGradient(0, BAR, 0, BAR + 200); sc.addColorStop(0, 'rgba(0,8,20,.3)'); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(0, BAR, W, 200);
+  if (o.side) { sc = g.createLinearGradient(0, 0, 900, 0); sc.addColorStop(0, `rgba(0,8,20,${.45 * o.side})`); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(0, 0, 900, H); }
+  if (o.right) { sc = g.createLinearGradient(W, 0, W - 900, 0); sc.addColorStop(0, `rgba(0,8,20,${.45 * o.right})`); sc.addColorStop(1, 'rgba(0,8,20,0)'); g.fillStyle = sc; g.fillRect(W - 900, 0, 900, H); }
+  // grain
+  const f = Math.floor(t * 24); const r = rng(f * 7 + 3);
+  g.save(); g.globalCompositeOperation = 'overlay'; g.globalAlpha = .1; g.translate(-r() * 384, -r() * 384); g.fillStyle = GRAIN[f % 4]; g.fillRect(0, 0, W + 384, H + 384); g.restore();
+}
+function letterbox() { g.fillStyle = '#000'; g.fillRect(0, 0, W, BAR); g.fillRect(0, H - BAR, W, BAR); }
+function flare(sunWorld, cam, k = 1) {
+  const [x, y, z] = proj(sunWorld, cam); if (z > 1 || k <= 0) return;
+  const on = clamp(1 - Math.max(0, Math.abs(x - W / 2) - W * .6) / 300) * clamp(1 - Math.max(0, Math.abs(y - H / 2) - H * .6) / 300); if (on <= 0) return;
+  g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = k * on;
+  let gr = g.createRadialGradient(x, y, 0, x, y, 420); gr.addColorStop(0, 'rgba(255,220,170,.55)'); gr.addColorStop(.2, 'rgba(255,170,90,.18)'); gr.addColorStop(1, 'rgba(255,140,60,0)'); g.fillStyle = gr; g.fillRect(x - 420, y - 420, 840, 840);
+  gr = g.createLinearGradient(x - 1100, 0, x + 1100, 0); gr.addColorStop(0, 'rgba(120,170,255,0)'); gr.addColorStop(.5, 'rgba(190,215,255,.5)'); gr.addColorStop(1, 'rgba(120,170,255,0)'); g.fillStyle = gr; g.fillRect(x - 1100, y - 2, 2200, 4);
+  const cx = W / 2, cy = H / 2;
+  [[.35, 40, 'rgba(255,190,120,.10)'], [.7, 22, 'rgba(140,200,255,.12)'], [1.25, 70, 'rgba(255,160,90,.07)'], [1.6, 30, 'rgba(160,255,200,.08)']].forEach(([u, r, c]) => { const gx = lerp(x, cx * 2 - x, u * .5), gy = lerp(y, cy * 2 - y, u * .5); g.fillStyle = c; g.beginPath(); g.arc(gx, gy, r, 0, 7); g.fill(); });
+  g.restore();
+}
+
+/* ============================== GLOW TEXTURE ============================== */
+function glowTex(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)') {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, inner); gr.addColorStop(1, outer);
+  x.fillStyle = gr; x.fillRect(0, 0, 256, 256); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const GLOW = glowTex();
+
+/* ============================== WORLD: HEART ============================== */
+function makeHeart() {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x04060c);
+  scene.fog = new THREE.Fog(0x04060c, 14, 40);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture; scene.environmentIntensity = .45;
+  const cam = new THREE.PerspectiveCamera(30, W / H, .1, 200);
+  scene.add(new THREE.AmbientLight(0x331018, .6));
+  const key = new THREE.DirectionalLight(0xffe2cc, 2.2); key.position.set(3, 4, 6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x6fd8ff, 3.2); rim.position.set(-5, 2, -5); scene.add(rim);
+  const rim2 = new THREE.DirectionalLight(0xff5060, 2.0); rim2.position.set(5, -1, -4); scene.add(rim2);
+  const fill = new THREE.PointLight(0xff3040, 14, 12, 1.6); fill.position.set(1.5, -2, 3); scene.add(fill);
+
+  // ventricles: a deformed sphere (apex down and to the viewer's right)
+  const deform = (x, y, z) => {
+    let r = 1; if (y < .25) r = lerp(1, .1, Math.pow((.25 - y) / 1.25, 1.45));
+    let X = x * r * (1 + (y > 0 ? .1 * y : 0)), Y = y * 1.3, Z = z * r * .84;
+    const k = Math.max(0, -y); X += .42 * k * k; Z += .1 * k * k;
+    const d = x * .86 + y * .42 - z * .1, groove = Math.exp(-d * d / .006) * Math.max(0, z) * .07;
+    return [X * (1 - groove), Y * (1 - groove * .4) - .1, Z * (1 - groove)];
+  };
+  const ven = new THREE.SphereGeometry(1, 160, 120); { const p = ven.attributes.position; for (let i = 0; i < p.count; i++) { const v = deform(p.getX(i), p.getY(i), p.getZ(i)); p.setXYZ(i, ...v); } ven.computeVertexNormals(); }
+  const atL = new THREE.SphereGeometry(1, 64, 48); atL.scale(.58, .46, .52); atL.translate(.52, .98, -.18);
+  const atR = new THREE.SphereGeometry(1, 64, 48); atR.scale(.6, .5, .55); atR.translate(-.55, 1.0, -.08);
+  const tube = (pts, r, seg = 80) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => V3(...p))), seg, r, 24, false);
+  const aorta = tube([[.05, .7, -.05], [.12, 1.5, -.02], [.05, 2.15, -.1], [-.45, 2.4, -.25], [-.85, 2.1, -.4], [-.95, 1.4, -.5]], .23);
+  const br = [[-.05, 2.3, -.15], [-.3, 2.42, -.22], [-.55, 2.38, -.3]].map(([x, y, z], i) => tube([[x, y, z], [x - .04 + i * .02, y + .55, z], [x - .1 + i * .05, y + 1.0, z - .05]], .07, 30));
+  const pulm = tube([[.42, .75, .32], [.5, 1.35, .3], [.42, 1.75, .15], [.95, 1.95, -.05], [1.35, 1.9, -.2]], .18);
+  const pulm2 = tube([[.42, 1.75, .15], [.1, 1.98, .05], [-.25, 1.95, -.05]], .13, 40);
+  const vc = tube([[-.78, .9, -.25], [-.8, 1.6, -.3], [-.78, 2.4, -.3]], .16, 40);
+  // coronary arteries on the surface
+  const surf = (u, v) => { const th = u * Math.PI * 2, ph = v; const x = Math.cos(th) * Math.sin(ph), y = Math.cos(ph), z = Math.sin(th) * Math.sin(ph); const d = deform(x, y, z); const n = Math.hypot(...d); return d.map(c => c * (1 + .025 / n)); };
+  const cor1 = tube(Array.from({ length: 9 }, (_, i) => surf(.25 + .02 * Math.sin(i), .55 + i * .27)), .03, 60);
+  const cor2 = tube(Array.from({ length: 7 }, (_, i) => surf(.08 + i * .045, .75 + i * .12)), .025, 50);
+  const U = { uDep: { value: -1 }, uRep: { value: -1 }, uChaos: { value: 0 }, uT: { value: 0 }, uFlash: { value: 0 }, uSq: { value: 0 }, uDent: { value: 0 }, uDentP: { value: V3(-.1, .2, .9) }, uWin: { value: 0 } };
+  const mat = new THREE.MeshPhysicalMaterial({ color: 0x6e1019, roughness: .48, metalness: 0, clearcoat: .45, clearcoatRoughness: .4, sheen: .6, sheenColor: new THREE.Color(0xff6a78), sheenRoughness: .5 });
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = 'uniform float uSq; uniform float uChaos; uniform float uT; uniform float uDent; uniform vec3 uDentP; varying vec3 vObj;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float vent = smoothstep(1.15, -.2, position.y);
+      transformed.xz *= 1. - uSq * vent;
+      transformed.y += uSq * .5 * vent * (position.y - .9) * -.25;
+      transformed += normal * uChaos * .018 * sin(position.y * 31. + uT * 47.) * sin(position.x * 23. - uT * 39.) * vent;
+      vec3 dd = position - uDentP; transformed -= normal * uDent * .22 * exp(-dot(dd, dd) / .09);
+      vObj = position;`);
+    sh.fragmentShader = 'uniform float uDep; uniform float uRep; uniform float uChaos; uniform float uT; uniform float uFlash; uniform float uWin; varying vec3 vObj;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      float h = clamp((vObj.y + 1.5) / 2.75, 0., 1.2), body = step(vObj.y, 1.35);
+      if (uDep >= 0.) { float c = 1.05 - uDep * 1.2; totalEmissiveRadiance += vec3(.35, .85, 1.) * (exp(-pow((h - c) / .06, 2.)) * 2.4 + smoothstep(c + .02, c + .25, h) * .18 * (1. - uDep)) * body; }
+      if (uRep >= 0.) { float c = -.1 + uRep * 1.2; totalEmissiveRadiance += vec3(1., .6, .2) * exp(-pow((h - c) / .1, 2.)) * 1.1 * body; }
+      if (uChaos > 0.) { float a = atan(vObj.z, vObj.x); float s1 = sin(a * 3. + vObj.y * 7. - uT * 11.) * sin(vObj.y * 5. + uT * 7. + sin(vObj.x * 6.)); float s2 = sin(a * 5. - vObj.y * 9. + uT * 13.) * sin(vObj.z * 8. - uT * 9.);
+        totalEmissiveRadiance += vec3(.45, .9, 1.) * (pow(max(s1, 0.), 6.) + pow(max(s2, 0.), 8.)) * 1.0 * uChaos * body; }
+      totalEmissiveRadiance += vec3(1., .3, .3) * uWin * .5 * body + vec3(1.) * uFlash * .8 * body;`);
+  };
+  const G = new THREE.Group(); scene.add(G);
+  for (const geo of [ven, atL, atR, aorta, ...br, pulm, pulm2, vc]) G.add(new THREE.Mesh(geo, mat));
+  const cmat = new THREE.MeshPhysicalMaterial({ color: 0xb02a30, roughness: .3, clearcoat: 1, emissive: 0x200000 });
+  G.add(new THREE.Mesh(cor1, cmat), new THREE.Mesh(cor2, cmat));
+  G.rotation.set(.12, -.35, -.32); G.position.set(0, -.15, 0);
+  // halo + floating particles
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xff2a3a, transparent: true, opacity: .35, depthWrite: false, blending: THREE.AdditiveBlending })); halo.scale.set(9, 9, 1); halo.position.set(0, .4, -3); scene.add(halo);
+  const r = rng(5), NP = 900, pp = new Float32Array(NP * 3), pc = new Float32Array(NP * 3);
+  for (let i = 0; i < NP; i++) { pp.set([(r() - .5) * 30, (r() - .5) * 18, -r() * 22 + 4], i * 3); const red = r() < .65; pc.set(red ? [1, .25, .3] : [.4, .8, 1], i * 3); }
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pp, 3)); pg.setAttribute('color', new THREE.BufferAttribute(pc, 3));
+  const pts = new THREE.Points(pg, new THREE.PointsMaterial({ size: .07, map: GLOW, vertexColors: true, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending })); scene.add(pts);
+  // anatomical landmarks (in group space)
+  const SA = V3(-.62, 1.18, .32), APEX = V3(.62, -1.45, .22), FRONT = V3(-.1, .2, .9);
+  function update(t, o = {}) {
+    const ph = o.ph;
+    let sq = 0, dep = -1, rep = -1;
+    if (ph !== null && ph !== undefined) {
+      const b = o.beat ?? 1;
+      sq = b * .075 * (Math.exp(-Math.pow((ph - .26) / .08, 2)));
+      if (ph > .14 && ph < .36) dep = (ph - .14) / .22;
+      if (ph > .4 && ph < .68) rep = (ph - .4) / .28;
+      if (o.noWave) dep = rep = -1;
+    }
+    U.uSq.value = sq + (o.sq || 0); U.uDep.value = o.dep ?? dep; U.uRep.value = o.rep ?? rep;
+    U.uChaos.value = o.chaos || 0; U.uT.value = t; U.uFlash.value = o.flash || 0; U.uDent.value = o.dent || 0; U.uWin.value = o.win || 0;
+    pts.rotation.y = t * .015; pts.position.y = Math.sin(t * .2) * .2;
+    halo.material.opacity = .25 + .25 * (sq / .075) + (o.flash || 0) * .4 + (o.chaos || 0) * .1;
+    const c = o.cam || {}; const look = V3(...(c.look || [0, .35, 0])).add(V3(0, .4, 0)), dist = (c.dist ?? 8) * 1.3, az = c.az ?? 0, el = c.el ?? .08;
+    cam.fov = c.fov ?? 30; cam.position.set(look.x + Math.sin(az) * Math.cos(el) * dist, look.y + Math.sin(el) * dist, look.z + Math.cos(az) * Math.cos(el) * dist);
+    cam.lookAt(look); if (c.shift) cam.setViewOffset(W, H, -c.shift, 0, W, H); else cam.clearViewOffset(); cam.updateProjectionMatrix();
+    G.updateMatrixWorld(true);
+    draw(scene, cam, (o.bloom ?? .8) * .85, .72);
+  }
+  const world = v => v.clone().applyMatrix4(G.matrixWorld);
+  return { update, cam, world, SA, APEX, FRONT };
+}
+
+/* ============================== WORLD: FOOTBALL PITCH (hypothetical, stylised) ============================== */
+function makePitch() {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x03050b); scene.fog = new THREE.Fog(0x03050b, 18, 75);
+  const cam = new THREE.PerspectiveCamera(32, W / H, .1, 300);
+  scene.add(new THREE.HemisphereLight(0xa8c4ff, 0x0b1a0e, .9));
+  const sun = new THREE.DirectionalLight(0xdfe8ff, 2.4); sun.position.set(-8, 20, 10); scene.add(sun);
+  const back = new THREE.DirectionalLight(0x9fd0ff, 2.0); back.position.set(6, 12, -14); scene.add(back);
+  // grass with mowed stripes + lines
+  const c = document.createElement('canvas'); c.width = 2048; c.height = 1024; const x = c.getContext('2d');
+  for (let i = 0; i < 16; i++) { x.fillStyle = i % 2 ? '#1c4a25' : '#235a2d'; x.fillRect(i * 128, 0, 128, 1024); }
+  const nr = rng(3); for (let i = 0; i < 40000; i++) { x.fillStyle = `rgba(${nr() < .5 ? '0,0,0' : '255,255,255'},.05)`; x.fillRect(nr() * 2048, nr() * 1024, 2, 2); }
+  x.strokeStyle = 'rgba(255,255,255,.42)'; x.lineWidth = 7; x.strokeRect(1024 - 3, -10, 6, 1044);
+  x.beginPath(); x.arc(1024, 512, 160, 0, 7); x.stroke(); x.strokeRect(1700, 250, 400, 524); x.strokeRect(1880, 400, 200, 224);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(105, 68), new THREE.MeshStandardMaterial({ map: tex, roughness: .95 })); ground.rotation.x = -Math.PI / 2; ground.position.x = -8; scene.add(ground);
+  // floodlights
+  for (const [px, pz] of [[-55, -40], [40, -40], [-55, 38], [40, 38], [-8, -46]]) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xeaf2ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); s.scale.set(9, 9, 1); s.position.set(px, 26, pz); scene.add(s);
+    const s2 = s.clone(); s2.material = s.material.clone(); s2.material.opacity = .25; s2.scale.set(30, 30, 1); s2.position.copy(s.position); scene.add(s2);
+  }
+  // crowd: dim speckles on the far stand
+  const cr = rng(11), NC = 4000, cp = new Float32Array(NC * 3); for (let i = 0; i < NC; i++) cp.set([-60 + cr() * 105, 1 + cr() * 14, -40 - cr() * 10], i * 3);
+  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.BufferAttribute(cp, 3));
+  scene.add(new THREE.Points(cg, new THREE.PointsMaterial({ size: .25, color: 0x5d6b8a, transparent: true, opacity: .5, depthWrite: false })));
+  function makeFigure(kit, shorts, skin = 0xbfbfbf) {
+    const mk = col => new THREE.MeshStandardMaterial({ color: col, roughness: .55 }); const mK = mk(kit), mS = mk(shorts), mH = mk(skin);
+    const cap = (r, l, m) => new THREE.Mesh(new THREE.CapsuleGeometry(r, l, 8, 16), m);
+    const root = new THREE.Group(), hips = new THREE.Group(); hips.position.y = .98; root.add(hips);
+    const pelvis = cap(.15, .12, mS); pelvis.rotation.z = Math.PI / 2; hips.add(pelvis);
+    const spine = new THREE.Group(); hips.add(spine);
+    const torso = cap(.17, .42, mK); torso.position.y = .36; spine.add(torso);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.12, 24, 16), mH); head.position.y = .8; spine.add(head);
+    const limb = (parent, px, py, r1, l1, r2, l2, m1, m2) => {
+      const a = new THREE.Group(); a.position.set(px, py, 0); parent.add(a); const u = cap(r1, l1, m1); u.position.y = -l1 / 2 - r1 * .5; a.add(u);
+      const b = new THREE.Group(); b.position.y = -l1 - r1; a.add(b); const lo = cap(r2, l2, m2); lo.position.y = -l2 / 2 - r2 * .5; b.add(lo); return [a, b];
+    };
+    const [thL, shL] = limb(hips, -.1, -.02, .075, .34, .06, .36, mS, mH), [thR, shR] = limb(hips, .1, -.02, .075, .34, .06, .36, mS, mH);
+    const [arL, foL] = limb(spine, -.24, .6, .05, .25, .045, .24, mK, mH), [arR, foR] = limb(spine, .24, .6, .05, .25, .045, .24, mK, mH);
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(.45, 32), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .45, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; shadow.position.y = .01;
+    scene.add(root, shadow);
+    function pose(p) {
+      const ph = p.ph || 0, a = p.amp ?? 1, k = p.knee || 0, fall = p.fall || 0;
+      thL.rotation.x = lerp(Math.sin(ph) * .75 * a, -1.55, k); thR.rotation.x = -Math.sin(ph) * .75 * a + k * .35;
+      shL.rotation.x = lerp(Math.max(0, Math.sin(ph + 1.3)) * 1.2 * a + .1, 1.75, k); shR.rotation.x = Math.max(0, Math.sin(ph + 1.3 + Math.PI)) * 1.2 * a + .1 + k * .3;
+      const up = p.arms || 0;
+      arL.rotation.x = lerp(-Math.sin(ph) * .6 * a, -2.6, up); arR.rotation.x = lerp(Math.sin(ph) * .6 * a, -2.4, up); arL.rotation.z = -.15 - up * .25; arR.rotation.z = .15 + up * .25;
+      foL.rotation.x = lerp(-.9 * a - .2, -.2, up); foR.rotation.x = lerp(-.9 * a - .2, -.2, up);
+      spine.rotation.x = (p.lean ?? .12 * a) - k * .1 + (p.recoil || 0);
+      hips.position.y = .98 - (p.drop || 0) + Math.abs(Math.sin(ph)) * .04 * a + (p.jump || 0);
+      root.position.set(p.x, 0, p.z || 0); root.rotation.y = p.ry ?? 0;
+      root.rotation.z = (p.fallDir || 1) * fall * 1.45;
+      root.position.y = 0; shadow.position.set(p.x + (p.fallDir || 1) * -fall * .7, .01, p.z || 0); shadow.scale.setScalar(1 + fall * .6);
+    }
+    return { pose, root, spine, torso };
+  }
+  const striker = makeFigure(0xe9ecef, 0x1b2230), keeper = makeFigure(0x29c26b, 0x101418);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(.11, 24, 16), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .4, emissive: 0x222222 })); scene.add(ball);
+  const hitGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xff2030, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 })); scene.add(hitGlow);
+  function update(t, st) {
+    striker.pose(st.s); keeper.pose(st.k);
+    ball.position.set(...st.ball);
+    hitGlow.material.opacity = st.glow || 0; hitGlow.scale.setScalar(.6 + (st.glow || 0) * 1.6);
+    striker.root.updateMatrixWorld(true); hitGlow.position.copy(striker.torso.getWorldPosition(V3(0, 0, 0))).add(V3(.12, .08, 0));
+    const c = st.cam; cam.fov = c.fov ?? 32; cam.position.set(...c.pos); cam.lookAt(V3(...c.look)); cam.updateProjectionMatrix();
+    draw(scene, cam, .55, .85);
+  }
+  const chestOf = () => striker.torso.getWorldPosition(V3(0, 0, 0));
+  return { update, cam, chestOf };
+}
+
+/* ============================== TIMELINE ============================== */
+const DATA = await (await fetch('script.json')).json();
+const CPS = 15, LEAD = .6, TAIL = 1.3;
+let SC = [], TOTAL = 0, STRIKES = [];
+function setup(timings) {
+  SC = []; TOTAL = 0;
+  DATA.scenes.forEach((s, i) => {
+    const sents = s.text.split(/(?<=[.!?])\s+/); let st = [], speech;
+    const tm = timings && timings.scenes && timings.scenes[i];
+    if (tm && tm.sentence_starts && tm.sentence_starts.length === sents.length) { st = tm.sentence_starts.map(v => LEAD + v); speech = tm.duration; }
+    else { let c = 0; sents.forEach(x => { st.push(LEAD + c / CPS); c += x.length + 1; }); speech = s.text.length / CPS; }
+    const lead = s.id === 'hook' ? LEAD : LEAD + 1.3;            // short chapter card before the voice
+    st = st.map(v => v - LEAD + lead);
+    const tail = s.id === 'outro' ? 8 : TAIL, dur = lead + speech + tail;
+    const S = k => st[clamp(k, 0, st.length - 1)], E = k => k + 1 < st.length ? st[k + 1] : lead + speech;
+    // word timings: real (ElevenLabs alignment) or estimated inside each sentence
+    const toks = s.text.split(/\s+/); let words = [];
+    if (tm && tm.word_starts && tm.word_starts.length === toks.length) words = toks.map((w, j) => ({ w, t: lead + tm.word_starts[j], e: lead + (tm.word_ends ? tm.word_ends[j] : tm.word_starts[j] + .3) }));
+    else {
+      let j = 0;
+      sents.forEach((sen, k) => {
+        const sw = sen.split(/\s+/), a = S(k), b = E(k), span = Math.min(b - a, sen.length / CPS); let off = 0;
+        sw.forEach(w => { const t0 = a + span * off / sen.length; off += w.length + 1; words.push({ w: toks[j++] || w, t: t0, e: a + span * Math.min(1, (off - 1) / sen.length) }); });
+      });
+    }
+    words.forEach(o => { o.k = emph(o.w); });
+    SC.push({ ...s, idx: i, start: TOTAL, dur, st, sents, S, E, speech, lead, words, chunks: chunkWords(words) }); TOTAL += dur;
+  });
+  STRIKES = [];
+  STRIKES.sort((a, b) => a - b);
+  PUNCH = []; let lastP = -9;
+  SC.forEach(s => s.words.forEach(o => { const tt = s.start + o.t; if ((o.k === 'red' || o.k === 'num0') && tt - lastP > 1.1) { PUNCH.push(tt); lastP = tt; } }));
+  return { total: TOTAL, fps: 24, punches: PUNCH, scenes: SC.map(s => ({ id: s.id, start: s.start, dur: s.dur, lead: s.lead, speech: s.speech, sentence_starts: s.st })), strikes: STRIKES };
+}
+
+/* ============================== KINETIC TYPOGRAPHY ============================== */
+let PUNCH = [];
+const NUMW = /^(one|two|three|four|five|six|seven|ten|twenty|forty|hundred|thousand|percent|milliseconds|2023|quarter)$/i;
+const RED_W = /^(stop|stopped|collapses|collision|hit|blow|chaos|fibrillation|quivers|wrong|vulnerable|collapsed|random)$/i;
+const ICE_W = /^(electricity|charge|signal|wave|ions|shock|reset|resets|resetting|electric)$/i;
+const KEY_W = /^(physics|heart|window|timing|defibrillator|defibrillation|pacemaker|survived|survival|CPR|C|P|R)$/i;
+function emph(w) {
+  const c = w.replace(/[^A-Za-z0-9\-']/g, '');
+  if (NUMW.test(c)) return 'num'; if (RED_W.test(c)) return 'red'; if (ICE_W.test(c)) return 'ice'; if (KEY_W.test(c)) return 'key'; return '';
+}
+function chunkWords(words) {
+  const out = []; let cur = [];
+  words.forEach((o, i) => {
+    cur.push(o); const len = cur.reduce((a, b) => a + b.w.length + 1, 0);
+    const nxt = words[i + 1];
+    const brk = /[.!?;:]$/.test(o.w) || (/,$/.test(o.w) && cur.length >= 2) || cur.length >= 5 || len > 28 || (nxt && nxt.t - o.t > .7);
+    if (brk || !nxt) { out.push(cur); cur = []; }
+  });
+  // first number word of a run gets 'num0' (punch)
+  words.forEach((o, i) => { if (o.k === 'num' && !(words[i - 1] && words[i - 1].k === 'num')) o.k = 'num0'; });
+  return out.map((c, i) => ({ words: c, t0: c[0].t, t1: Math.min(out[i + 1] ? out[i + 1][0].t : 1e9, c[c.length - 1].e + .9) }));
+}
+const ebk = x => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };   // ease-out-back
+const KCOL = { num: AMBER, num0: AMBER, red: RED, ice: ICE, key: GREEN, '': '#fff' };
+function captions(sc, lt, k = 1) {
+  if (k <= 0) return;
+  const ch = sc.chunks.find(c => lt >= c.t0 - .05 && lt < c.t1); if (!ch) return;
+  const out = 1 - ss(ch.t1 - .14, ch.t1, lt);
+  const S0 = 50, y = 902; g.save();
+  const items = ch.words.map(o => { const big = o.k ? 1.12 : 1; const sz = S0 * big; g.font = `${o.k ? 800 : 600} ${sz}px Inter`; g.letterSpacing = '0px'; return { o, sz, w: g.measureText(o.w).width }; });
+  const gap = 15, tot = items.reduce((a, b) => a + b.w, 0) + gap * (items.length - 1);
+  let x = W / 2 - tot / 2;
+  for (const it of items) {
+    const d = lt - it.o.t; const p = clamp(d / .2); if (d < -.02) { x += it.w + gap; continue; }
+    const sc2 = lerp(.55, 1, ebk(p)), a = clamp(d / .07) * out * k;
+    const active = lt >= it.o.t && lt < it.o.e + .1;
+    g.save(); g.translate(x + it.w / 2, y - (1 - eout(p)) * 22 - (1 - out) * 10); g.scale(sc2, sc2);
+    g.globalAlpha = a; g.font = `${it.o.k ? 800 : 600} ${it.sz}px Inter`; g.textAlign = 'center';
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    g.fillStyle = it.o.k ? KCOL[it.o.k] : (active ? '#fff' : 'rgba(255,255,255,.86)');
+    g.fillText(it.o.w, 0, 0);
+    g.restore(); x += it.w + gap;
+  }
+  g.restore();
+}
+// staggered per-letter reveal
+const TITLE = o => ({ ...o, w: 900, ls: Math.min(o.ls || 0, 3) - 1, c: '#fff', title: true });
+function glowText(str, x, y) {   // white letters, soft white halo
+  g.shadowColor = 'rgba(255,255,255,.95)'; g.shadowBlur = (34) * DPR; g.fillText(str, x, y);
+  g.shadowColor = 'rgba(255,255,255,.8)'; g.shadowBlur = (12) * DPR; g.fillText(str, x, y);
+  g.shadowColor = 'transparent'; g.shadowBlur = 0; g.fillText(str, x, y);
+}
+function KT(str, x, y, o, t0, lt) {
+  if ((o.s || 40) >= 50) o = TITLE(o);
+  const a = clamp(o.a ?? 1); if (a <= .002 || lt < t0) return;
+  g.save(); g.font = `${o.w || 400} ${o.s || 40}px Inter`; g.letterSpacing = (o.ls || 0) + 'px';
+  const tw = g.measureText(str).width; let x0 = o.al === 'center' ? x - tw / 2 : (o.al === 'right' ? x - tw : x);
+  const stg = o.stg ?? .035;
+  for (let i = 0; i < str.length; i++) {
+    const p = clamp((lt - t0 - i * stg) / .45); if (p <= 0) break;
+    const px = x0 + g.measureText(str.slice(0, i)).width;
+    g.save(); g.globalAlpha = a * clamp(p * 2); g.fillStyle = o.c || '#fff';
+    g.shadowColor = 'transparent'; g.shadowBlur = 0;
+    g.translate(px, y + (1 - eout(p)) * (o.dy ?? 40)); g.textAlign = 'left'; if (o.title) glowText(str[i], 0, 0); else g.fillText(str[i], 0, 0); g.restore();
+  }
+  g.restore();
+}
+function flashAt(t) {
+  let f = 0, idx = 0; STRIKES.forEach((s, i) => { const d = t - s; if (d >= 0 && d < 1.3) { const v = Math.exp(-d * 5.5) * (.55 + .45 * Math.abs(Math.sin(d * 55))) + (d > .13 && d < .21 ? .7 : 0); if (v > f) { f = v; idx = i; } } });
+  return { f: clamp(f), idx };
+}
+
+/* ============================== CHAPTER CARD ============================== */
+function chapterCard(sc, lt) {
+  if (!sc.chapter) return; const a = win(lt, .05, sc.lead + .1, .3, .35); if (a <= 0) return;
+  g.fillStyle = `rgba(0,0,0,${.4 * a})`; g.fillRect(0, 0, W, H);
+  const z = 1 + seg(lt, 0, sc.lead) * .06; g.save(); g.translate(W / 2, 540); g.scale(z, z); g.translate(-W / 2, -540);
+  KT(sc.numeral, W / 2, 470, { s: 64, w: 300, ls: 0, al: 'center', c: AMBER, a, dy: 20 }, .05, lt);
+  L([[W / 2 - 60 * eout(seg(lt, .1, .6)), 500], [W / 2 + 60 * eout(seg(lt, .1, .6)), 500]], { c: AMBER, lw: 2, a });
+  KT(sc.chapter.toUpperCase(), W / 2, 590, { s: 80, w: 300, ls: 18, al: 'center', a, stg: .03 }, .15, lt);
+  g.restore();
+}
+
+/* ============================== ECG ============================== */
+const BPM = 72;
+function ecgVal(ph) {
+  const G = (c, w, a) => a * Math.exp(-Math.pow((ph - c) / w, 2));
+  return G(.09, .028, .13) + G(.188, .008, -.12) + G(.2, .011, 1) + G(.214, .009, -.28) + G(.48, .055, .3);
+}
+const vfVal = tt => .38 * Math.sin(tt * 31) + .26 * Math.sin(tt * 47 + 1.3) + .2 * Math.sin(tt * 23 + .7) * Math.sin(tt * 3.1) + .1 * Math.sin(tt * 71);
+const phaseAt = (tt, bpm = BPM, ph0 = .55) => ((tt * bpm / 60 + ph0) % 1 + 1) % 1;
+// state machine for a local timeline: o.vf (VF starts), o.flat (flat starts), o.shock (shock time → normal rhythm)
+function sig(tt, o = {}) {
+  if (o.shock != null && tt >= o.shock) { const q = tt - o.shock; if (q < .3) return Math.exp(-q * 18) * 1.6 * Math.sin(q * 70); return ecgVal(phaseAt(q - .3, o.bpm || BPM, .02)); }
+  if (o.flat != null && tt >= o.flat) return .015 * Math.sin(tt * 9);
+  if (o.vf != null && tt >= o.vf) return vfVal(tt) * Math.min(1, (tt - o.vf) * 4) * (o.vfDecay ? Math.max(.3, Math.exp(-(tt - o.vf) * o.vfDecay)) : 1);
+  return ecgVal(phaseAt(tt, o.bpm || BPM, o.ph0 ?? .55));
+}
+function heartState(tt, o = {}) {   // what the 3D heart should do at local time tt (consistent with sig)
+  if (o.shock != null && tt >= o.shock) { const q = tt - o.shock; return { ph: q < .3 ? null : phaseAt(q - .3, o.bpm || BPM, .02), flash: Math.exp(-q * 6) * (q >= 0 ? 1 : 0), chaos: 0 }; }
+  if (o.flat != null && tt >= o.flat) return { ph: null, chaos: 0 };
+  if (o.vf != null && tt >= o.vf) return { ph: null, chaos: Math.min(1, (tt - o.vf) * 3) };
+  return { ph: phaseAt(tt, o.bpm || BPM, o.ph0 ?? .55), chaos: 0 };
+}
+function ecgGrid(x, y, w, h, a) {
+  g.save(); g.globalAlpha = a * .5; g.strokeStyle = 'rgba(108,242,176,.12)'; g.lineWidth = 1;
+  for (let i = 0; i <= w; i += 40) { g.beginPath(); g.moveTo(x + i, y - h); g.lineTo(x + i, y + h); g.stroke(); }
+  for (let j = -h; j <= h; j += 40) { g.beginPath(); g.moveTo(x, y + j); g.lineTo(x + w, y + j); g.stroke(); }
+  g.restore();
+}
+function ecgStrip(x, y, w, h, lt, o = {}) {
+  const a = o.a ?? 1; if (a <= .002) return; const span = o.span || 4, N = Math.round(w / 3), pts = [];
+  if (o.grid !== false) ecgGrid(x, y, w, h * 1.1, a);
+  const t0 = o.t0 ?? -1e9;
+  for (let i = 0; i <= N; i++) { const tt = lt - span + span * i / N; if (tt < t0) continue; pts.push([x + w * i / N, y - sig(tt, o) * h]); }
+  if (pts.length < 2) return;
+  L(pts, { c: o.c || GREEN, lw: o.lw || 3, glow: 14, a });
+  const e = pts[pts.length - 1]; dot(e[0], e[1], 6, '#fff', a, 20);
+  if (o.label) T(o.label, x, y - h * 1.25, { s: 18, w: 600, ls: 5, c: o.c || GREEN, a: a * .9 });
+}
+// one beat, large, with labels and the vulnerable window
+function ecgBeat(x, y, w, h, prog, o = {}) {
+  const a = o.a ?? 1; if (a <= .002) return; const N = 420, pts = [];
+  ecgGrid(x, y, w, h * 1.15, a);
+  const X = ph => x + w * (ph - .02) / .7;
+  if (o.win) { const x1 = X(.44), x2 = X(.482); g.save(); g.globalAlpha = a * o.win; g.fillStyle = 'rgba(255,74,85,.28)'; g.shadowColor = RED; g.shadowBlur = 30 * DPR; g.fillRect(x1, y - h * 1.1, x2 - x1, h * 1.6); g.restore(); L([[x1, y - h * 1.1], [x1, y + h * .5]], { c: RED, lw: 2, a: a * o.win }); L([[x2, y - h * 1.1], [x2, y + h * .5]], { c: RED, lw: 2, a: a * o.win }); }
+  for (let i = 0; i <= N * prog; i++) { const ph = .02 + .7 * i / N; let v = ecgVal(ph); if (o.vfAfter && ph > o.vfAfter) v = vfVal(ph * 9) * .9; pts.push([X(ph), y - v * h]); }
+  if (pts.length > 1) { L(pts, { c: GREEN, lw: 4, glow: 16, a }); const e = pts[pts.length - 1]; dot(e[0], e[1], 7, '#fff', a, 22); }
+  const lab = (txt, ph, dy, la) => { if (prog > (ph - .02) / .7 + .02) T(txt, X(ph), y - ecgVal(ph) * h + dy, { s: 28, w: 800, ls: 2, al: 'center', c: '#fff', a: a * (la ?? 1) }); };
+  if (o.labels) { lab('P', .09, -40); lab('QRS', .2, -38); lab('T', .48, -42); }
+  return X;
+}
+/* ============================== CHEST CROSS-SECTION (2D) ============================== */
+function heartPath(cx, cy, s) {
+  g.beginPath(); g.moveTo(cx, cy + s * .9);
+  g.bezierCurveTo(cx - s * 1.25, cy + s * .1, cx - s * .95, cy - s * .95, cx - s * .1, cy - s * .55);
+  g.bezierCurveTo(cx + s * .55, cy - s * 1.05, cx + s * 1.3, cy - s * .2, cx + s * .2, cy + s * .75); g.closePath();
+}
+function chest(cx, cy, o = {}) {
+  const a = o.a ?? 1; if (a <= .002) return; const s = o.s || 1;
+  g.save(); g.globalAlpha = a; g.translate(cx, cy); g.scale(s, s);
+  // torso outline (front view)
+  g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 3; g.beginPath();
+  g.moveTo(-230, -260); g.bezierCurveTo(-300, -200, -300, 120, -240, 300); g.moveTo(230, -260); g.bezierCurveTo(300, -200, 300, 120, 240, 300); g.stroke();
+  // ribs
+  for (let i = 0; i < 7; i++) { const yy = -200 + i * 62, w2 = 200 + Math.sin(i / 6 * Math.PI) * 40; for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(sd * 22, yy); g.quadraticCurveTo(sd * w2 * .8, yy - 30, sd * w2, yy + 60); g.strokeStyle = 'rgba(223,244,255,.45)'; g.lineWidth = 9; g.lineCap = 'round'; g.stroke(); } }
+  g.fillStyle = 'rgba(223,244,255,.5)'; g.fillRect(-18, -230, 36, 330);   // sternum
+  // heart behind, slightly left of the viewer's centre... (patient's left = viewer's right)
+  const hb = o.beat || 0, hx = 40, hy = 20, hs = 110 * (1 - hb * .06);
+  g.save(); g.globalAlpha = a * .95; heartPath(hx, hy, hs); const gr = g.createRadialGradient(hx - 20, hy - 30, 10, hx, hy, hs * 1.3); gr.addColorStop(0, o.flash ? '#ffd0d0' : '#ff5a66'); gr.addColorStop(1, '#5a0a12');
+  g.fillStyle = gr; g.shadowColor = o.vf ? CYAN : RED; g.shadowBlur = (30 + (o.vf || 0) * 30) * DPR; g.fill(); g.restore();
+  if (o.vf) { g.save(); g.globalAlpha = a * o.vf; heartPath(hx, hy, hs); g.clip(); for (let i = 0; i < 6; i++) { const t0 = (o.t || 0) * 3 + i * 1.7; dot(hx + Math.sin(t0 * 2.3) * 70, hy + Math.cos(t0 * 1.7) * 60, 26, CYAN, .5, 30); } g.restore(); }
+  if (o.target) { const r = 70 + Math.sin((o.t || 0) * 5) * 4; g.save(); g.globalAlpha = a * o.target; g.strokeStyle = AMBER; g.lineWidth = 3; g.setLineDash([10, 8]); g.beginPath(); g.arc(hx - 20, hy - 10, r, 0, 7); g.stroke(); g.setLineDash([]); g.beginPath(); g.moveTo(hx - 20 - r - 20, hy - 10); g.lineTo(hx - 20 - r + 20, hy - 10); g.moveTo(hx - 20 + r - 20, hy - 10); g.lineTo(hx - 20 + r + 20, hy - 10); g.stroke(); g.restore(); }
+  // impactor (ball) + pressure rings
+  if (o.ball !== undefined && o.ball > 0) { const u = clamp(o.ball), bx = lerp(620, 30, eio(Math.min(u, 1))), by = lerp(-160, -10, eio(Math.min(u, 1))); if (u < 1) dot(bx, by, 46, '#fff', 1, 20); }
+  if (o.ring > 0) for (let k = 0; k < 3; k++) { const q = o.ring - k * .12; if (q <= 0 || q > 1) continue; g.save(); g.globalAlpha = a * (1 - q); g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.arc(20, -10, 30 + q * 260, 0, 7); g.stroke(); g.restore(); }
+  g.restore();
+}
+/* ============================== CELL GRID (repolarisation is uneven) ============================== */
+function cells(x, y, cols, rows, sz, prog, a, o = {}) {
+  if (a <= .002) return; const r = rng(77);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const cx = x + i * sz * 1.5, cy = y + j * sz * 1.732 + (i % 2) * sz * .866, d = r() * .7;
+    const p = clamp((prog - d) / .3); const hit = o.hit && p < 1 && p > 0;
+    g.save(); g.globalAlpha = a; g.beginPath(); for (let k = 0; k < 6; k++) { const an = k * Math.PI / 3; g.lineTo(cx + Math.cos(an) * sz * .92, cy + Math.sin(an) * sz * .92); } g.closePath();
+    g.fillStyle = hit ? `rgba(255,74,85,${.5 + .4 * Math.sin((o.t || 0) * 20 + i)})` : (p >= 1 ? 'rgba(108,242,176,.55)' : `rgba(255,181,71,${.25 + .5 * (1 - p)})`);
+    if (hit) { g.shadowColor = RED; g.shadowBlur = 20 * DPR; } g.fill(); g.strokeStyle = 'rgba(255,255,255,.25)'; g.lineWidth = 1.5; g.stroke(); g.restore();
+  }
+}
+function tag(txt, x, y, a, c = AMBER, al = 'left') { T(txt, x, y, { s: 20, w: 700, ls: 6, c, a, al }); }
+
+/* ============================== SCENES ============================== */
+const heart = makeHeart(), pitch = makePitch();
+const HCAM = (lt, o = {}) => ({ look: o.look || [0, .35, 0], dist: o.dist ?? 8.2, az: (o.az ?? 0) + lt * (o.spin ?? .06), el: o.el ?? .1, fov: o.fov ?? 30, shift: o.shift || 0 });
+const SCENES = {
+  /* ---------- HOOK ---------- */
+  hook(lt, sc, t) {
+    const s = sc.S, c1 = s(2) - .05, c2 = s(3) - .05;
+    if (lt < c1) {
+      const u = seg(lt, 0, c1), hs = heartState(lt);
+      heart.update(t, { ...hs, cam: HCAM(lt, { dist: lerp(11, 7.6, eout(u)), az: -.5, spin: .07, el: .12, shift: lerp(0, 260, ss(s(1) - .5, s(1) + .5, lt)) }) });
+      post(t, { side: ss(s(1) - .5, s(1) + .5, lt) * .8 });
+      ecgStrip(150, 880 - 60, 1620, 70, lt, { a: ss(.2, 1.2, lt) * (1 - ss(s(1) - .5, s(1), lt)) * .9, span: 4.5, grid: false });
+      const a0 = win(lt, s(0) + .2, s(1) + .1, .3, .3);
+      bigNum('100,000', 'BEATS EVERY DAY', W / 2, 470, a0, { al: 'center', s: 170 });
+      if (lt > s(1) - .4) {
+        const a1 = win(lt, s(1) - .3, c1 + .2, .4, .2), X = ecgBeat(150, 600, 860, 200, clamp(seg(lt, s(1), s(1) + 3.5)), { a: a1, win: ss(s(1) + 4, s(1) + 5, lt) });
+        tag('ONE HEARTBEAT', 150, 330, a1, GREEN);
+        if (lt > s(1) + 4.5) tag('THE MOMENT', X(.445), 360, a1 * ss(s(1) + 4.5, s(1) + 5, lt), RED, 'center');
+      }
+      return { cuts: [c1, c2], capK: lt < s(1) ? 0 : 1 };
+    }
+    if (lt < c2) {
+      // the heart stops: "Twenty milliseconds."
+      const q = lt - c1; heart.update(t, { ph: null, win: .6, cam: HCAM(lt, { dist: 6.4, az: .1, spin: .02, el: .05 }) });
+      post(t, { vig: 1.4 }); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, W, H);
+      bigNum('20', 'MILLISECONDS', W / 2, 560, ss(0, .25, q), { al: 'center', s: 260, uc: RED });
+      return { cuts: [c1, c2], hard: [c1], capOff: true };
+    }
+    // title card
+    const q = lt - c2; heart.update(t, { ...heartState(lt), beat: .6, cam: HCAM(lt, { dist: 9.5, az: -.2, spin: .03, el: .1 }), bloom: .6 });
+    g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(0, 0, W, H); post(t);
+    KT('ONE HIT', W / 2, 560, { s: 150, w: 900, ls: 4, al: 'center', a: 1 - ss(sc.dur - .4, sc.dur, lt), stg: .06 }, c2 + .1, lt);
+    T('THE PHYSICS OF COMMOTIO CORDIS', W / 2, 640, { s: 24, w: 600, ls: 10, c: AMBER, al: 'center', a: ss(c2 + .8, c2 + 1.4, lt) * (1 - ss(sc.dur - .4, sc.dur, lt)) });
+    return { cuts: [c1, c2], capOff: true };
+  },
+
+  /* ---------- 1 · ONE COLLISION (hypothetical) ---------- */
+  context(lt, sc, t) {
+    const s = sc.S, Tc = s(3) - .55, c1 = s(1) - .05, c2 = s(2) - .05, c3 = s(3) + .6, c4 = s(7) - .05;
+    // distance-to-contact profile: normal speed far away, slow motion near contact
+    const dist = d => d < 1.4 ? .22 * d : .31 + 5.2 * (d - 1.4);
+    let sx, kx, sph, kph, knee = 0, arms = 0, fall = 0, recoil = 0, drop = 0, jump = 0, glow = 0, amp = 1;
+    if (lt < Tc) { const d = dist(Tc - lt); sx = -.3 - d; kx = .32 + d * .7; sph = sx * 3.4; kph = -kx * 3.4; knee = ss(Tc - 1.1, Tc - .15, lt); arms = knee; jump = knee * .18; }
+    else {
+      const q = lt - Tc; sx = -.3 - Math.min(q, 2.6) * .55 - ss(0, .35, q) * .25; kx = .32 + Math.min(q, .8) * .25; sph = -sx * 3 + Math.PI; kph = 0;
+      knee = 1 - ss(.4, 1.2, q); arms = knee; jump = knee * .18 * (1 - ss(0, .6, q)); recoil = -ss(0, .3, q) * .35 + ss(.6, 1.6, q) * .25;
+      glow = Math.exp(-q * 2.2) * ss(0, .05, q); amp = .5;
+      const fs = s(3) + 2.4; fall = ss(fs, fs + .8, lt); drop = fall * .1;
+    }
+    const ballX = lt < Tc ? sx + .55 : lerp(sx + .55, .9, ss(0, .6, lt - Tc)), ballY = lt < Tc ? .11 + Math.abs(Math.sin(lt * 5)) * .05 : .11 + Math.max(0, Math.sin(clamp((lt - Tc) / 1.4) * Math.PI)) * 1.6;
+    let cam;
+    const ch = pitch.chestOf ? null : null;
+    if (lt < c1) { const u = seg(lt, 0, c1); cam = { pos: [lerp(-14, -9, u), lerp(10, 8, u), lerp(24, 19, u)], look: [lerp(-6, -3, u), 0, 0], fov: 36 }; }
+    else if (lt < c2) { const u = seg(lt, c1, c2); cam = { pos: [sx - 2.5, 1.2, lerp(6.5, 5.5, u)], look: [sx + 1.6, 1.0, 0], fov: 30 }; }
+    else if (lt < c3) { const u = seg(lt, c2, c3), an = lerp(-.55, .35, eio(u)); cam = { pos: [Math.sin(an) * 4.2 - .1, 1.25, Math.cos(an) * 4.2], look: [0, 1.15, 0], fov: 27 }; }
+    else { const u = seg(lt, c3, sc.dur); cam = { pos: [lerp(-3.4, -2.6, u), lerp(2.6, 2.2, u), lerp(7.5, 6.2, u)], look: [-1.5, .6, 0], fov: 30 }; }
+    pitch.update(t, { s: { x: sx, ph: sph, amp, fall, fallDir: 1, recoil, drop, lean: .15 * amp, ry: Math.PI / 2 }, k: { x: kx, ph: kph, knee, arms, jump, ry: -Math.PI / 2, amp: lt < Tc ? 1 : .2 }, ball: [ballX, ballY, .05], glow, cam });
+    post(t);
+    // impact rings in screen space
+    if (lt >= Tc && lt < Tc + 1.2) { const [px, py] = proj(V3(-.25, 1.35, 0), pitch.cam); for (let k = 0; k < 3; k++) { const q = (lt - Tc) / .9 - k * .15; if (q > 0 && q < 1) { g.save(); g.globalAlpha = 1 - q; g.strokeStyle = RED; g.lineWidth = 4; g.shadowColor = RED; g.shadowBlur = 20 * DPR; g.beginPath(); g.arc(px, py, 20 + q * 220, 0, 7); g.stroke(); g.restore(); } } }
+    tag('A HYPOTHETICAL SCENARIO', 150, 230, win(lt, .4, c4, .5, .5) * .9, 'rgba(255,255,255,.75)');
+    // the checklist: no broken bones, no head injury, the heart stopped
+    const la = win(lt, s(4) - .2, c4 + .3, .4, .4);
+    if (la > 0) {
+      g.fillStyle = `rgba(0,4,12,${.55 * la})`; g.fillRect(0, 0, W, H);
+      const row = (txt, ok, k, y) => { const a = ss(s(k) - .1, s(k) + .3, lt) * la; if (a <= 0) return; T(ok ? '✓' : '✕', 1180, y, { s: 54, w: 900, c: ok ? GREEN : RED, a }); T(txt, 1260, y - 4, { s: 34, w: 800, ls: 6, a }); };
+      row('NO BROKEN BONES', 1, 4, 420); row('NO HEAD INJURY', 1, 5, 510); row('HEART STOPPED', 0, 6, 600);
+      ecgStrip(1180, 740, 600, 55, lt, { a: ss(s(6), s(6) + .4, lt) * la, span: 3, vf: s(6) + .3, vfDecay: .25, grid: false, c: RED });
+    }
+    if (lt >= c4) {
+      heart.update(t, { ph: null, chaos: .25, cam: HCAM(lt, { dist: 9, az: .3, spin: .04, el: .08 }) }); post(t);
+      g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(0, 0, W, H);
+      const q = s(8) - .1;
+      KT('How can one collision', W / 2, 470, { s: 84, al: 'center', stg: .03 }, q, lt);
+      KT('stop a healthy heart?', W / 2, 580, { s: 84, al: 'center', stg: .03 }, q + .5, lt);
+      return { cuts: [c1, c2, c3, c4], hard: [c2], capK: lt > q ? 0 : 1 };
+    }
+    return { cuts: [c1, c2, c3, c4], hard: [c2] };
+  },
+
+  /* ---------- 2 · AN ELECTRIC PUMP ---------- */
+  electric(lt, sc, t) {
+    const s = sc.S, c1 = s(4) - .05;
+    if (lt < c1) {
+      const hs = heartState(lt, { bpm: lt < s(1) ? 72 : 48 });
+      const shift = lerp(0, 330, ss(s(1) - .3, s(1) + .5, lt));
+      heart.update(t, { ...hs, cam: HCAM(lt, { dist: lerp(7.8, 6.6, seg(lt, 0, c1)), az: -.4, spin: .05, el: .12, shift }) });
+      post(t, { side: shift / 330 * .9 });
+      tag('THE HEART IS AN ELECTRIC PUMP', 150, 300, win(lt, s(0) + .3, s(1) + .3, .4, .3), AMBER);
+      const sa = heart.world(heart.SA); callout(sa, heart.cam, -260, -110, 'SINOATRIAL NODE', 'natural pacemaker · ~1 per second', win(lt, s(1) + .3, s(3), .4, .4), CYAN);
+      const ap = heart.world(heart.APEX);
+      callout(ap, heart.cam, -300, 60, 'DEPOLARISATION', 'charge sweeps down → muscle contracts', win(lt, s(2) + .2, s(3) + .2, .4, .4), CYAN);
+      callout(ap, heart.cam, -300, 60, 'REPOLARISATION', 'every cell resets → ready for the next beat', win(lt, s(3) + .2, c1 + .2, .4, .3), AMBER);
+      ecgStrip(150, 790, 760, 70, lt, { a: ss(s(1), s(1) + .6, lt), span: 4, bpm: lt < s(1) ? 72 : 48, label: 'ECG' });
+      return { cuts: [c1] };
+    }
+    // ECG beat with labels, then the cells resetting unevenly
+    heart.update(t, { ...heartState(lt), beat: .5, bloom: .5, cam: HCAM(lt, { dist: 10, az: .6, spin: .03, el: .1 }) });
+    g.fillStyle = 'rgba(0,4,12,.72)'; g.fillRect(0, 0, W, H); post(t);
+    const u = seg(lt, c1, c1 + 2.4); const X = ecgBeat(150, 640, 900, 220, u, { labels: true, win: 0 });
+    if (lt > s(4) + 1.6) { const a = ss(s(4) + 1.6, s(4) + 2.2, lt); L([[X(.48), 420], [X(.48), 320]], { c: AMBER, lw: 2, a }); tag('T WAVE = THE RESET', X(.48), 300, a, AMBER, 'center'); }
+    const ca = ss(s(5) - .1, s(5) + .5, lt); cells(1220, 330, 9, 7, 34, seg(lt, s(5), s(5) + 4.2), ca);
+    tag('HEART CELLS RESETTING', 1220, 290, ca, GREEN);
+    T('not all at the same time', 1220, 640 + 20, { s: 30, w: 300, it: true, a: ss(s(5) + 1.5, s(5) + 2.2, lt) });
+    return { cuts: [c1] };
+  },
+
+  /* ---------- 3 · THE WINDOW ---------- */
+  window(lt, sc, t) {
+    const s = sc.S, c1 = s(3) - .05, c2 = s(5) - .05;
+    if (lt < c1) {
+      heart.update(t, { ...heartState(lt), beat: .5, bloom: .5, cam: HCAM(lt, { dist: 10, az: -.6, spin: .03 }) });
+      g.fillStyle = 'rgba(0,4,12,.75)'; g.fillRect(0, 0, W, H); post(t);
+      const wk = ss(s(1) + .3, s(1) + 1.2, lt), X = ecgBeat(150, 640, 1100, 230, clamp(seg(lt, 0, 2.2)), { win: wk });
+      if (wk > 0) { tag('VULNERABLE WINDOW', X(.445), 300, wk, RED, 'center'); bigNum('10–40', 'MILLISECONDS', 1560, 560, ss(s(1) + 1.6, s(1) + 2.2, lt) * (1 - ss(s(2) - .2, s(2) + .2, lt)), { al: 'center', s: 90, uc: RED }); }
+      bigNum('1–3%', 'OF EACH HEARTBEAT', 1560, 560, ss(s(2), s(2) + .5, lt), { al: 'center', s: 150, uc: AMBER });
+      return { cuts: [c1, c2] };
+    }
+    if (lt < c2) {
+      // the blow stretches the muscle → stretch-activated channels → extra beat at the wrong time
+      const hit = s(3) + 1.0, q = lt - hit;
+      heart.update(t, { ph: q < 0 ? phaseAt(lt) : null, dent: q > 0 ? Math.exp(-q * 4) * ss(0, .05, q) : 0, chaos: ss(s(4) + 1.4, s(4) + 2.5, lt) * .6, flash: q > 0 ? Math.exp(-q * 8) * .5 : 0, cam: HCAM(lt, { dist: 6.8, az: .15, spin: .03, el: .05, shift: -330 }) });
+      post(t, { right: .9 });
+      cells(1150, 330, 9, 7, 34, .55, ss(s(3) + .3, s(3) + .8, lt), { hit: q > 0, t: lt });
+      tag('STRETCH-ACTIVATED CHANNELS OPEN', 1150, 290, ss(s(3) + 1.3, s(3) + 1.8, lt), RED);
+      tag('→ AN EXTRA BEAT AT THE WRONG TIME', 1150, 700, ss(s(4) + .3, s(4) + .8, lt), '#fff');
+      return { cuts: [c1, c2], hard: [c1] };
+    }
+    // fibrillation
+    const vf = c2 + .2;
+    heart.update(t, { ph: null, chaos: ss(vf, vf + .8, lt), cam: HCAM(lt, { dist: lerp(7.5, 6.2, seg(lt, c2, sc.dur)), az: -.2, spin: .05, el: .08 }) });
+    post(t);
+    ecgStrip(150, 790, 1620, 60, lt, { span: 4, vf, grid: false, c: RED, a: .9 });
+    KT('VENTRICULAR FIBRILLATION', W / 2, 330, { s: 70, al: 'center', stg: .025, a: 1 - ss(sc.dur - .5, sc.dur, lt) }, s(6) - .1, lt);
+    T('the heart quivers instead of pumping', W / 2, 400, { s: 32, w: 300, it: true, al: 'center', a: ss(s(7), s(7) + .5, lt) });
+    return { cuts: [c1, c2] };
+  },
+
+  /* ---------- 4 · THE IMPACT ---------- */
+  impact(lt, sc, t) {
+    const s = sc.S, c1 = s(4) - .05, c2 = s(6) - .05;
+    if (lt < c1) {
+      heart.update(t, { ...heartState(lt), beat: .4, bloom: .4, cam: HCAM(lt, { dist: 11, az: 1, spin: .02 }) });
+      g.fillStyle = 'rgba(0,4,12,.82)'; g.fillRect(0, 0, W, H); post(t);
+      const hitT = s(1) + 1.6, hb = Math.exp(-Math.pow((phaseAt(lt) - .26) / .08, 2));
+      chest(700, 540, { s: 1.15, beat: hb, target: ss(s(1) + .2, s(1) + .8, lt) * (1 - ss(s(2), s(2) + .5, lt)), t: lt, ball: seg(lt, hitT - .6, hitT), ring: lt > hitT ? (lt - hitT) / .9 : 0 });
+      tag('DIRECTLY OVER THE HEART', 1220, 320, ss(s(1) + .3, s(1) + .8, lt), AMBER);
+      const items = ['BALL', 'KNEE', 'SHOULDER', 'ELBOW'];
+      items.forEach((it, i) => T(it, 1220, 430 + i * 72, { s: 52, w: 900, ls: 2, a: ss(s(2) + .5 + i * .45, s(2) + .9 + i * .45, lt) * (1 - ss(s(3) - .3, s(3), lt)), title: true }));
+      tag('ANIMAL STUDIES', 1220, 430, ss(s(3), s(3) + .4, lt), CYAN); T('a baseball-sized impact', 1220, 500, { s: 40, w: 300, it: true, a: ss(s(3) + .2, s(3) + .7, lt) });
+      return { cuts: [c1, c2] };
+    }
+    if (lt < c2) {
+      // same hit, two timings
+      heart.update(t, { ph: null, bloom: .3, cam: HCAM(lt, { dist: 12, az: .5 }) }); g.fillStyle = 'rgba(0,4,12,.88)'; g.fillRect(0, 0, W, H); post(t);
+      const hitA = c1 + 1.6, a1 = ss(c1, c1 + .5, lt);
+      T('SAME HIT · DIFFERENT MOMENT', W / 2, 260, { s: 22, w: 700, ls: 8, al: 'center', c: AMBER, a: a1 });
+      ecgStrip(170, 470, 740, 70, lt - c1, { a: a1, span: 3.2, label: 'OUTSIDE THE WINDOW', grid: false });
+      ecgStrip(1010, 470, 740, 70, lt - c1, { a: a1, span: 3.2, vf: 1.65, label: 'INSIDE THE WINDOW', c: RED, grid: false });
+      if (lt > hitA) { for (const x of [540, 1380]) { const q = (lt - hitA) / .6; if (q < 1) { g.save(); g.globalAlpha = 1 - q; g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.arc(x, 470, 20 + q * 120, 0, 7); g.stroke(); g.restore(); } } }
+      T('Timing matters more than strength.', W / 2, 760, { s: 46, w: 800, al: 'center', a: ss(s(4) + .2, s(4) + .7, lt) });
+      T('That is why it is so rare, and so random.', W / 2, 830, { s: 30, w: 300, it: true, al: 'center', a: ss(s(5), s(5) + .5, lt) });
+      return { cuts: [c1, c2], capOff: true };
+    }
+    // a survivor's story (text only)
+    const hs = heartState(lt - c2, { vf: 1.5, shock: s(7) + .6 - c2 });
+    heart.update(t, { ...hs, cam: HCAM(lt, { dist: 7.4, az: -.3, spin: .05, el: .1, shift: 330 }) }); post(t, { side: .9 });
+    tag('JANUARY 2023 · NFL', 150, 360, ss(s(6), s(6) + .4, lt), AMBER);
+    const line = (txt, k, y) => T(txt, 150, y, { s: 50, w: 900, a: ss(s(k) - .1, s(k) + .4, lt), title: true });
+    line('Collapsed after a tackle', 6, 450); line('Heart restarted on the field', 7, 530); line('Survived. Played again.', 8, 610);
+    ecgStrip(150, 820, 680, 55, lt - c2, { span: 3, vf: 1.5, shock: s(7) + .6 - c2, grid: false, c: lt - c2 > s(7) + .6 - c2 ? GREEN : RED });
+    return { cuts: [c1, c2] };
+  },
+
+  /* ---------- 5 · THE CLOCK ---------- */
+  aed(lt, sc, t) {
+    const s = sc.S, c1 = s(5) - .05, shock = s(5) + 2.6;
+    if (lt < c1) {
+      heart.update(t, { ph: null, chaos: .7, bloom: .5, cam: HCAM(lt, { dist: 10, az: .2, spin: .03 }) }); g.fillStyle = 'rgba(0,4,12,.7)'; g.fillRect(0, 0, W, H); post(t);
+      // clock
+      const mins = Math.max(0, (lt - s(0)) * .32), a0 = ss(s(0), s(0) + .4, lt) * (1 - ss(s(3) - .3, s(3), lt));
+      const mm = Math.floor(mins), ssx = Math.floor((mins - mm) * 60);
+      bigNum(`${String(mm).padStart(2, '0')}:${String(ssx).padStart(2, '0')}`, 'NO BLOOD TO THE BRAIN', 520, 560, a0, { al: 'center', s: 200, uc: RED });
+      // survival bars (illustrative)
+      const ba = ss(s(2), s(2) + .5, lt) * (1 - ss(s(3) - .3, s(3), lt));
+      if (ba > 0) { tag('CHANCE OF SURVIVAL', 1060, 330, ba, AMBER); for (let m = 0; m <= 9; m++) { const v = Math.max(0, 1 - m * .095), gr = ss(s(2) + .2 + m * .15, s(2) + .5 + m * .15, lt); g.save(); g.globalAlpha = ba; g.fillStyle = m < 3 ? GREEN : (m < 6 ? AMBER : RED); g.fillRect(1060 + m * 66, 760 - 360 * v * gr, 44, 360 * v * gr); g.restore(); T(`${m}`, 1082 + m * 66, 800, { s: 20, w: 600, al: 'center', a: ba * .8 }); }
+        T('minutes without defibrillation · −7 to −10% per minute', 1060, 850, { s: 22, w: 400, a: ba * .8, c: 'rgba(255,255,255,.8)' }); }
+      const ra = ss(s(3), s(3) + .4, lt);
+      if (ra > 0) { tag('ONE REVIEW OF COMMOTIO CORDIS CASES', W / 2, 300, ra, AMBER, 'center'); bigNum('~25%', 'SURVIVED · RESUSCITATION WITHIN 3 MIN', 620, 600, ra, { al: 'center', s: 170, uc: GREEN }); bigNum('3%', 'AFTER 3 MINUTES', 1320, 600, ss(s(4), s(4) + .4, lt), { al: 'center', s: 170, uc: RED }); }
+      return { cuts: [c1], capK: 1 };
+    }
+    // the shock
+    const hs = heartState(lt, { vf: -99, shock });
+    heart.update(t, { ...hs, cam: HCAM(lt, { dist: lerp(7.6, 6.6, seg(lt, c1, sc.dur)), az: -.25, spin: .05, el: .1 }) }); post(t);
+    if (lt > shock && lt < shock + .25) { g.fillStyle = `rgba(255,255,255,${.6 * (1 - (lt - shock) / .25)})`; g.fillRect(0, 0, W, H); }
+    ecgStrip(150, 790, 1620, 60, lt, { span: 4, vf: -99, shock, grid: false, c: lt > shock + .3 ? GREEN : RED });
+    tag('DEFIBRILLATOR', 150, 300, ss(c1 + .3, c1 + .8, lt), CYAN);
+    T('one shock resets every cell at once', 150, 360, { s: 34, w: 300, it: true, a: ss(shock + .4, shock + 1, lt) });
+    return { cuts: [c1], hard: [c1] };
+  },
+
+  /* ---------- 6 · TWO MINUTES ---------- */
+  outro(lt, sc, t) {
+    const s = sc.S, B = sc.lead + sc.speech;
+    heart.update(t, { ...heartState(lt, { bpm: 64 }), cam: HCAM(lt, { dist: lerp(8.4, 9.6, seg(lt, 0, sc.dur)), az: -.3, spin: .05, el: .1, shift: lerp(0, 330, ss(s(2) - .4, s(2) + .4, lt)) * (1 - ss(s(5) - .5, s(5) + .3, lt)) }) });
+    post(t, { side: ss(s(2) - .4, s(2) + .4, lt) * (1 - ss(s(5) - .5, s(5) + .3, lt)) });
+    g.fillStyle = `rgba(0,0,0,${.45 * ss(s(5) - .4, s(5) + .2, lt) + .25 * ss(B, B + 1.5, lt)})`; g.fillRect(0, 0, W, H);
+    const row = (txt, k, y, c) => { const a = ss(s(k) - .1, s(k) + .4, lt) * (1 - ss(s(5) - .6, s(5) - .1, lt)); T(txt, 150, y, { s: 56, w: 900, a, title: true }); };
+    tag('IN THE MINUTES THAT FOLLOW', 150, 340, ss(s(1), s(1) + .4, lt) * (1 - ss(s(5) - .6, s(5) - .1, lt)), AMBER);
+    row('Know where the nearest AED is', 2, 440); row('Learn CPR', 3, 530); row('The machine talks you through it', 4, 620);
+    ecgStrip(150, 790, 1620, 50, lt, { span: 4, bpm: 64, grid: false, a: .7 * (1 - ss(B, B + 2, lt)) });
+    KT('A heartbeat is electricity.', W / 2, 500, { s: 76, al: 'center', stg: .03, a: 1 - ss(B + 1, B + 2, lt) }, s(5) - .1, lt);
+    const fa = ss(B + 1.4, B + 2.2, lt);
+    KT('The right shock, at the right time.', W / 2, 520, { s: 60, al: 'center', a: fa, stg: .02 }, B + 1.4, lt);
+    T('Sources: Link et al., NEJM 1998 · Maron & Estes, NEJM 2010 · American Heart Association', W / 2, 600, { s: 16, w: 400, ls: 1, al: 'center', c: 'rgba(255,255,255,.5)', a: ss(B + 2.6, B + 3.4, lt) });
+    T('Educational content, not medical advice. In an emergency, call your local emergency number.', W / 2, 630, { s: 16, w: 400, ls: 1, al: 'center', c: 'rgba(255,255,255,.5)', a: ss(B + 2.6, B + 3.4, lt) });
+    return { cuts: [], fadeOut: 2.5, capOff: lt > B };
+  },
+};
+
+/* ============================== FRAME ============================== */
+function renderFrame(t) {
+  t = clamp(t, 0, TOTAL - 1e-4);
+  let sc = SC[0]; for (const s of SC) if (t >= s.start) sc = s;
+  const lt = t - sc.start;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  const res = SCENES[sc.id](lt, sc, t) || {};
+  captions(sc, lt, res.capOff ? 0 : (res.capK ?? 1));
+  chapterCard(sc, lt);
+  // camera FX on the 3D layer: whip-pan at every cut, punch-in on emphasised words, impact shake
+  let whip = 0, dir = 1, tr = 0, trDur = .16;
+  for (const [i, c] of (res.cuts || []).entries()) {
+    const ty = (res.hard || []).includes(c) ? 0 : (Math.round(c * 37) + sc.idx * 3 + i) % 6, D = ty === 2 ? .3 : (ty === 5 ? .35 : .16), d = lt - c;
+    if (Math.abs(d) < D) { const k = 1 - Math.abs(d) / D; if (k * k > whip) { whip = k * k; tr = ty; trDur = D; dir = (i % 2 ? -1 : 1) * Math.sign(d || 1); } }
+  }
+  // transition styles (no flashes): 0 hard cut · 1 horizontal whip · 2 zoom-through · 3 vertical whip · 4 roll-whip · 5 focus pull
+  let tx = 0, ty2 = 0, tz = 0, trot = 0, tblur = 0;
+  if (tr === 1) { tx = dir * whip * 240; tblur = whip * 16; }
+  else if (tr === 2) { tz = whip * .35; tblur = whip * 8; }
+  else if (tr === 3) { ty2 = dir * whip * 160; tblur = whip * 14; }
+  else if (tr === 4) { trot = dir * whip * 7; tz = whip * .12; tblur = whip * 10; }
+  else if (tr === 5) { tblur = whip * 18; tz = whip * .04; }
+  let punch = 0; for (const p of PUNCH) { const d = t - p; if (d >= 0 && d < 1) punch = Math.max(punch, Math.exp(-d * 5) * ss(0, .04, d)); }
+  const fl = flashAt(t).f * (res.flash !== undefined ? 1 : 0);
+  const shx = 0, shy = 0;
+  // never a static frame: every shot drifts in, and long shots get jump-zooms every ~2.6 s
+  const cutsAll = [0, ...(res.cuts || []).filter(c => c > 0 && c < sc.dur), sc.dur].sort((a, b) => a - b);
+  let s0 = 0, s1 = sc.dur; for (let i = 0; i + 1 < cutsAll.length; i++) if (lt >= cutsAll[i] && lt < cutsAll[i + 1]) { s0 = cutsAll[i]; s1 = cutsAll[i + 1]; }
+  const sl = s1 - s0, u = clamp((lt - s0) / sl), shotN = cutsAll.indexOf(s0) + sc.idx * 7;
+  const drift = 1.015 + .075 * u;
+  let jz = 0, jx = 0, jy = 0;
+  if (false) {
+    const n = Math.max(2, Math.round(sl / 2.6)), seg2 = sl / n, k = Math.min(n - 1, Math.floor((lt - s0) / seg2)), into = lt - s0 - k * seg2;
+    const lvl = kk => (kk % 2) * .14 + (kk % 3 === 2 ? .06 : 0);
+    const e = ss(0, .14, into); jz = lerp(lvl(k - 1 < 0 ? 0 : k - 1), lvl(k), k ? e : 1);
+    const side = ((shotN + k) % 3 - 1); jx = side * 70 * jz / .14; jy = -20 * jz / .14;
+    if (k) CUTS_ABS.add(+(sc.start + s0 + k * seg2).toFixed(3));
+  }
+  (res.cuts || []).forEach(c => { if (c > 0 && c < sc.dur) CUTS_ABS.add(+(sc.start + c).toFixed(3)); }); CUTS_ABS.add(+sc.start.toFixed(3));
+  const Z = drift * (1 + jz) * (1 + punch * .05 + tz);
+  GL.style.transform = `translate(${(tx + shx - jx).toFixed(1)}px,${(ty2 + shy - jy).toFixed(1)}px) rotate(${trot.toFixed(2)}deg) scale(${(Z * (1 + Math.abs(trot) * .012)).toFixed(4)})`;
+  GL.style.filter = `contrast(1.14) saturate(1.18) brightness(.97) blur(${tblur.toFixed(1)}px)`;
+  let black = 0;
+  const edge = Math.min(lt, sc.dur - lt); black = Math.max(black, (1 - clamp(edge / .1)) * .8);
+  if (res.fadeIn) black = Math.max(black, 1 - clamp(lt / res.fadeIn));
+  if (res.fadeOut) black = Math.max(black, ss(sc.dur - res.fadeOut, sc.dur, lt));
+  if (black > 0) { g.fillStyle = `rgba(0,0,0,${black})`; g.fillRect(0, 0, W, H); }
+  letterbox();
+}
+// chapter progress bar inside the top letterbox: viewers always see where they are and what's next
+const CUTS_ABS = new Set(); window.CUTS_ABS = CUTS_ABS;
+function progressBar(t) {
+  const h = SC[0]; if (t < h.start + h.dur - .3) return;
+  const a = ss(h.dur - .3, h.dur + .6, t) * (1 - ss(TOTAL - 4, TOTAL - 2, t)); if (a <= 0) return;
+  const x0 = 150, x1 = W - 150, y = 92, chs = SC.filter(s => s.chapter);
+  const T0 = chs[0].start, T1 = TOTAL; const X = v => x0 + (x1 - x0) * (v - T0) / (T1 - T0);
+  g.save(); g.globalAlpha = a;
+  chs.forEach((s, i) => {
+    const xa = X(s.start) + (i ? 6 : 0), xb = X(s.start + s.dur) - 6, cur = t >= s.start && t < s.start + s.dur, done = t >= s.start + s.dur;
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(xa, y, xb - xa, 4);
+    const fillTo = done ? xb : (cur ? lerp(xa, xb, (t - s.start) / s.dur) : xa);
+    if (fillTo > xa) { g.fillStyle = cur ? AMBER : 'rgba(255,181,71,.55)'; if (cur) { g.shadowColor = AMBER; g.shadowBlur = (10) * DPR; } g.fillRect(xa, y, fillTo - xa, 4); g.shadowBlur = 0; }
+    g.font = `${cur ? 700 : 500} 13px Inter`; g.letterSpacing = '2px'; g.fillStyle = cur ? '#fff' : 'rgba(255,255,255,.45)'; g.textAlign = 'left';
+    g.fillText(`${s.numeral}  ${s.chapter.toUpperCase()}`, xa, y - 14);
+  });
+  g.restore();
+}
+window.setupTimeline = setup; window.renderFrame = renderFrame; window.TIMELINE = setup(null);
+for (const f of ['900 40px Inter', '800 40px Inter', '200 40px Inter', '300 40px Inter', '400 40px Inter', '500 40px Inter', '600 40px Inter', '700 40px Inter', 'italic 300 40px Inter']) await document.fonts.load(f);
+window.READY = true;
+</script>
+</body>
+</html>
