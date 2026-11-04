@@ -44,3 +44,19 @@ commotio cordis, Jesús de Miguel, Jesus de Miguel Tenerife, Tenerife Andorra, O
 
 ## Pinned comment
 Rest in peace, Jesús de Miguel. We don't know yet what caused his cardiac arrest. If one thing comes from this video, let it be this: learn CPR and know where the nearest AED is at your club. 🕊️
+
+---
+
+# Short (out/short.mp4, 1080×1920, 40 s)
+
+## Title
+One knee to the chest. 20 milliseconds. #commotiocordis
+
+## Description
+A blow to the chest at the wrong millisecond of the heartbeat can stop a healthy heart. It's called commotio cordis, and doctors have named it the leading hypothesis in the death of Tenerife forward Jesús de Miguel while the autopsy is pending. Rest in peace.
+
+Full video on the channel: What Is Commotio Cordis? The Physics of a Fatal Blow
+
+Learn CPR. Know where the nearest AED is.
+
+#commotiocordis #JesusDeMiguel #football #heart #shorts
