@@ -1,0 +1,48 @@
+{
+  "title": "The Physics of Catching a Spaceship",
+  "language": "en",
+  "scenes": [
+    {
+      "id": "hook",
+      "chapter": "",
+      "numeral": "",
+      "text": "A spaceship the height of a fifteen-story building falls out of the sky. Seven kilometers per second, wrapped in plasma. Minutes later, it has to stop in mid-air, between two steel arms, with almost no margin for error. Nobody has ever caught a spaceship. This is the physics of trying."
+    },
+    {
+      "id": "mission",
+      "chapter": "Flight 15",
+      "numeral": "1",
+      "text": "SpaceX's next Starship test flight is targeting mid-November from Starbase, Texas. The goal: catch both stages with the launch tower. The giant booster has been caught before, first in October 2024. The ship itself never has. It comes back from space, not from the edge of it. And that changes everything."
+    },
+    {
+      "id": "reentry",
+      "chapter": "Fire",
+      "numeral": "2",
+      "text": "In space, the ship is moving at about seven kilometers per second. Every kilogram carries half of v squared in kinetic energy. That is about twenty-five megajoules per kilogram, six times the energy in a kilogram of TNT. All of it has to go somewhere. The ship slams into the upper atmosphere and compresses the air in front of it into a shock wave so hot it glows as plasma. Around eighteen thousand ceramic tiles on its belly take the heat, so the steel underneath doesn't."
+    },
+    {
+      "id": "bellyflop",
+      "chapter": "The Belly Flop",
+      "numeral": "3",
+      "text": "Lower down, the ship does something no rocket did before. It falls flat, belly first, like a skydiver. Drag equals one half, times air density, times velocity squared, times the drag coefficient, times the area. Turn the whole fifty-meter body sideways, and the area is enormous. Drag grows until it balances gravity. That is terminal velocity. Four flaps steer it, like a skydiver's arms and legs, without burning a drop of fuel."
+    },
+    {
+      "id": "flip",
+      "chapter": "The Flip",
+      "numeral": "4",
+      "text": "But the tower needs the ship standing upright, and nearly stopped. So, close to the ground, the engines relight, and the ship swings from horizontal to vertical in a few seconds. Then the landing burn. Stopping distance equals v squared over twice the deceleration. Light too late, and it hits the tower. Light too early, and it runs out of speed too high and starts to fall again. The burn has to end at zero velocity, at exactly the right height."
+    },
+    {
+      "id": "catch",
+      "chapter": "The Catch",
+      "numeral": "5",
+      "text": "The tower's arms, nicknamed the chopsticks, swing closed around the ship. They don't grab the body. They catch it on small hardpoints, and the arms absorb the last of the motion. The ship has to arrive within a few meters of a precise point in three dimensions, after a trip through space. A guidance error the size of a car is the difference between a catch and a collision."
+    },
+    {
+      "id": "outro",
+      "chapter": "Why Bother",
+      "numeral": "6",
+      "text": "Why not just land on legs? Because every kilogram of landing gear is a kilogram that can't be payload. That's the goal: catch the ship, refuel it, and fly it again, the way airlines fly airplanes. That is what would make space travel cheap. Elon Musk puts the odds of catching it on the first try at fifty to sixty percent. But whether it's caught or not, the physics doesn't change. Energy has to go somewhere. And gravity always wins, unless you plan for it."
+    }
+  ]
+}
