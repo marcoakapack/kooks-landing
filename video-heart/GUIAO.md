@@ -2,7 +2,7 @@
 
 **Voz:** Scotty (Australian), ElevenLabs v4. Um MP3 por cena com o nome indicado → `video-heart/audio/`.
 
-**Duração estimada:** ~3:00. **Regras:** sem nome nem imagem do jogador no título/thumbnail; causa referida como não confirmada.
+**Duração estimada:** ~3:00. **Regras:** sem referência direta ao jogador; o exemplo é hipotético e apresentado como tal ("Imagine…").
 
 ## Hook  →  `scene_00_hook.mp3`
 
@@ -10,11 +10,11 @@ Your heart beats about a hundred thousand times a day. And in every single beat,
 
 *Visual:* Black screen, a single heartbeat sound + ECG line drawing across. Heart in 3D beating, glowing red. Big: 20 MS.
 
-## 1 · A Collision  →  `scene_01_context.mp3`
+## 1 · One Collision  →  `scene_01_context.mp3`
 
-This week, a professional footballer in Spain died after going into cardiac arrest following an on-pitch collision. The exact medical cause has not been confirmed, and investigators are still looking into it. But it raises a question millions of people are asking. How can a collision stop a healthy heart?
+Imagine a football match. Late in the game, a striker and a goalkeeper go for the same ball. A knee catches the striker in the chest. He gets up, takes two steps, and collapses. No broken bones. No head injury. Just a heart that suddenly stopped. It sounds impossible, and it's a question many football fans have been asking this week. How can one collision stop a healthy heart?
 
-*Visual:* Abstract: stadium lights blurred, a ball in slow motion. No player images, no names. Text: CAUSE NOT YET CONFIRMED.
+*Visual:* Cena hipotética em 3D estilizado: duas figuras abstratas (sem rosto, sem equipas reais) a disputar a bola em câmara lenta; o impacto no peito acende a vermelho; a figura cai. Texto: A HYPOTHETICAL SCENARIO.
 
 ## 2 · An Electric Pump  →  `scene_02_electric.mp3`
 
