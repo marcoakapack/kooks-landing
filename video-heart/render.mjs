@@ -16,7 +16,7 @@ const OUT = path.resolve(ROOT, arg('out', 'out/video_silent.mp4'));
 const STILLS = arg('stills', null);
 const SCALE = +arg('scale', process.env.SCALE || 1);   // 2 → 3840×2160 (4K)
 
-const MIME = { '.otf': 'font/otf', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
+const MIME = { '.otf': 'font/otf', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.mjs': 'text/javascript' };
 const server = http.createServer((req, res) => {
   const p = path.join(ROOT, decodeURIComponent(req.url.split('?')[0]));
   if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
