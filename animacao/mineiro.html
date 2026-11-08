@@ -14,18 +14,15 @@
 <canvas id="c" width="1920" height="1080"></canvas>
 <script>
 // ---------------------------------------------------------------------------
-// "O Mineiro": 5 s em estilo cutout de papel, só com código.
-// Mesmas regras de index.html (ver PESQUISA.md): poses a cada 2 frames sem
-// easing, fantoche rígido de peças, pestanejar antes de falar, cabeça vira
-// antes do corpo, cenário sem contornos, textura de papel por peça.
-// Adulto => tem pernas, que alternam aos solavancos.
+// "O Mineiro": 5 s em estilo cutout. A personagem é o desenho original,
+// cortado em peças (tools/cortar_mineiro.py) e animado como fantoche:
+// peças rígidas que rodam em pivots, poses a cada 2 frames, sem easing.
+// Por código só se desenham as peças de troca: pupilas, pálpebras e bocas.
 // ---------------------------------------------------------------------------
 const W = 1920, H = 1080, FPS = 24, DURATION = 5;
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
-const OUT = '#1b1715';
-const TAU = Math.PI * 2;
-const D2R = Math.PI / 180;
+const TAU = Math.PI * 2, D2R = Math.PI / 180;
 
 function rng(seed) {
   return function () {
@@ -37,7 +34,7 @@ function rng(seed) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, p) => a + (b - a) * p;
-const between = (t, a, b) => t >= a && t < b;
+const between = (t, a, b) => t >= a - 1e-6 && t < b - 1e-6;
 const POSE = 2 / FPS;
 const twos = t => Math.floor(t / POSE + 1e-6) * POSE;
 const poseIdx = (t, start) => Math.floor((t - start) / POSE + 1e-6);
@@ -70,21 +67,18 @@ const TEX = (() => {
 })();
 function hash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) % 512; }
 
+const OUT = '#1b1715';
 let CAM_S = 1;
 function piece(c, fill, build, opt = {}) {
   const lw = opt.lw ?? 3, shadow = opt.shadow ?? true, tex = opt.tex ?? true;
   c.beginPath(); build(c);
   if (fill) {
-    if (shadow) {
-      c.shadowColor = 'rgba(20,10,0,0.30)';
-      c.shadowOffsetX = 2 * CAM_S; c.shadowOffsetY = 2 * CAM_S; c.shadowBlur = 1.5 * CAM_S;
-    }
+    if (shadow) { c.shadowColor = 'rgba(20,10,0,0.30)'; c.shadowOffsetX = c.shadowOffsetY = 2 * CAM_S; c.shadowBlur = 1.5 * CAM_S; }
     c.fillStyle = fill; c.fill();
     c.shadowColor = 'transparent'; c.shadowBlur = c.shadowOffsetX = c.shadowOffsetY = 0;
     if (tex) {
       c.save(); c.globalCompositeOperation = 'multiply';
-      const o = hash(fill);
-      TEX.setTransform(new DOMMatrix().translate(o, o * 1.7 % 512));
+      const o = hash(fill); TEX.setTransform(new DOMMatrix().translate(o, o * 1.7 % 512));
       c.fillStyle = TEX; c.fill(); c.restore();
     }
   }
@@ -94,16 +88,10 @@ const flat = (c, fill, build) => piece(c, fill, build, { lw: 0, shadow: false })
 const ell = (x, y, rx, ry, r = 0) => c => c.ellipse(x, y, rx, ry, r, 0, TAU);
 const poly = pts => c => { pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); };
 const line = (c, pts, lw = 3, col = OUT) => { c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.lineWidth = lw; c.strokeStyle = col; c.lineCap = 'round'; c.lineJoin = 'round'; c.stroke(); };
-
-// Mancha de fuligem: forma irregular fixa (semente) em multiply, colada à peça
-function soot(c, x, y, r, seed, a = 0.30) {
+function soot(c, x, y, r, seed, a = 0.25) {
   const R = rng(seed), n = 11, pts = [];
   for (let i = 0; i < n; i++) { const ang = i / n * TAU, rr = r * (0.55 + R() * 0.55); pts.push([x + Math.cos(ang) * rr, y + Math.sin(ang) * rr * 0.8]); }
-  c.save(); c.globalCompositeOperation = 'multiply';
-  c.fillStyle = `rgba(62,58,56,${a})`; c.beginPath(); poly(pts)(c); c.fill();
-  c.fillStyle = `rgba(40,37,35,${a * 1.4})`;
-  for (let i = 0; i < 7; i++) { c.beginPath(); c.arc(x + (R() - 0.5) * r * 2.4, y + (R() - 0.5) * r * 1.8, 1.5 + R() * 3, 0, TAU); c.fill(); }
-  c.restore();
+  c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = `rgba(62,58,56,${a})`; c.beginPath(); poly(pts)(c); c.fill(); c.restore();
 }
 
 // --------------------------------- CENÁRIO ---------------------------------
@@ -144,8 +132,9 @@ function pine(c, x, y, s, col) {
   c.restore();
 }
 
+const RAIL_Y = 912, PILE_X = 760, CART_X = 360;
+
 function buildBackground() {
-  // ---- longe: céu e montanhas
   let c = FAR.getContext('2d');
   flat(c, '#79b5e4', c => c.rect(0, 0, W, H));
   cloud(c, 820, 120, 0.9); cloud(c, 1560, 170, 1.0); cloud(c, 260, 90, 0.7);
@@ -154,17 +143,12 @@ function buildBackground() {
   range(c, [[-60, 720], [-60, 470], [0, 468], [130, 386], [200, 430], [330, 356], [470, 480], [600, 418], [720, 500], [860, 376], [940, 420], [1060, 348], [1200, 470], [1300, 440], [1420, 386], [1520, 460], [1640, 366], [1760, 440], [1900, 398], [1990, 450], [1990, 720]],
     '#8092b0', '#f1f5f9', 400, 9);
 
-  // ---- meio: encosta rochosa com a boca da mina, pinheiros à direita
   c = MID.getContext('2d');
   flat(c, '#e2eaf3', c => { c.moveTo(-60, 600); c.quadraticCurveTo(500, 540, 900, 580); c.quadraticCurveTo(1400, 620, 1990, 560); c.lineTo(1990, H + 60); c.lineTo(-60, H + 60); c.closePath(); });
-  [[1180, 600, 0.55, '#3c6a49'], [1500, 590, 0.6, '#3c6a49'], [1860, 585, 0.62, '#3c6a49']].forEach(a => pine(c, ...a));
-  const rock = [[-60, 720], [-60, 400], [70, 360], [190, 392], [320, 340], [450, 402], [560, 446], [650, 520], [730, 610], [790, 720]];
-  flat(c, '#7a726b', poly(rock));
-  // estratos de rocha
+  [[1180, 600, 0.55, '#3c6a49'], [1500, 590, 0.6, '#3c6a49'], [1860, 585, 0.62, '#3c6a49'], [1640, 620, 0.75, '#2d5b39']].forEach(a => pine(c, ...a));
+  flat(c, '#7a726b', poly([[-60, 720], [-60, 400], [70, 360], [190, 392], [320, 340], [450, 402], [560, 446], [650, 520], [730, 610], [790, 720]]));
   [[60, 480, 70, 22], [380, 450, 60, 18], [560, 560, 50, 16], [140, 620, 80, 20], [620, 650, 40, 14]].forEach(([x, y, rx, ry]) => flat(c, '#665f59', ell(x, y, rx, ry)));
-  // neve no topo da encosta
   flat(c, '#f1f5f9', poly([[-60, 400], [70, 360], [190, 392], [320, 340], [450, 402], [560, 446], [610, 486], [560, 470], [520, 452], [470, 438], [420, 420], [370, 404], [320, 378], [270, 398], [220, 410], [170, 404], [110, 392], [60, 388], [0, 412], [-60, 424]]));
-  // boca da mina: abertura escura com moldura de madeira
   flat(c, '#141110', c => c.rect(232, 560, 196, 150));
   flat(c, '#2a2320', c => c.rect(232, 560, 196, 26));
   flat(c, '#7b5634', c => { c.rect(214, 552, 24, 160); c.rect(422, 552, 24, 160); });
@@ -172,28 +156,24 @@ function buildBackground() {
   flat(c, '#a07a4c', c => c.rect(268, 488, 124, 44));
   c.fillStyle = '#2b1f16'; c.font = '900 30px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText('MINA', 330, 511);
-  // lanterna
   flat(c, '#2b2622', c => c.rect(450, 566, 4, 18));
   flat(c, '#f3c64e', c => c.roundRect(440, 584, 24, 30, 6));
   flat(c, '#2b2622', c => { c.rect(438, 580, 28, 6); c.rect(438, 612, 28, 5); });
 
-  // ---- perto: chão, carris, pilha de carvão
   c = NEAR.getContext('2d');
   flat(c, '#c8d5e2', c => { c.moveTo(-60, 700); c.quadraticCurveTo(600, 690, 1100, 702); c.quadraticCurveTo(1500, 712, 1990, 696); c.lineTo(1990, H + 200); c.lineTo(-60, H + 200); c.closePath(); });
   flat(c, '#eef3f8', c => { c.moveTo(-60, 708); c.quadraticCurveTo(600, 698, 1100, 710); c.quadraticCurveTo(1500, 720, 1990, 704); c.lineTo(1990, H + 200); c.lineTo(-60, H + 200); c.closePath(); });
-  // neve suja junto aos carris
   flat(c, '#d3d7dc', c => c.roundRect(-60, 858, W + 120, 74, 30));
-  flat(c, '#c2c6cc', ell(470, 960, 230, 40));
-  // carris (vista frontal: travessas + 2 trilhos)
+  flat(c, '#c2c6cc', ell(PILE_X, 962, 230, 40));
   for (let x = -30; x < W + 40; x += 64) flat(c, '#6a4b2f', c => c.rect(x, 870, 26, 50));
   flat(c, '#5d636b', c => { c.rect(-60, 880, W + 120, 8); c.rect(-60, 908, W + 120, 9); });
   flat(c, '#9aa1a9', c => { c.rect(-60, 878, W + 120, 4); c.rect(-60, 906, W + 120, 4); });
   // pilha de carvão
-  piece(c, '#232226', poly([[300, 978], [340, 920], [380, 905], [420, 868], [470, 858], [520, 872], [565, 904], [610, 930], [650, 978]]), { lw: 3 });
+  const px = PILE_X;
+  piece(c, '#232226', poly([[px - 170, 985], [px - 130, 925], [px - 90, 905], [px - 50, 872], [px, 862], [px + 50, 876], [px + 95, 908], [px + 140, 935], [px + 180, 985]]), { lw: 3 });
   const r = rng(77);
-  for (let i = 0; i < 26; i++) {
-    const x = 340 + r() * 280, y = 900 + r() * 70 - Math.max(0, 40 - Math.abs(x - 475) * 0.3);
-    const s = 9 + r() * 10;
+  for (let i = 0; i < 28; i++) {
+    const x = px - 140 + r() * 290, y = 905 + r() * 70 - Math.max(0, 40 - Math.abs(x - px) * 0.3), s = 9 + r() * 10;
     flat(c, i % 3 ? '#34333a' : '#46454d', poly([[x - s, y], [x - s * 0.3, y - s * 0.8], [x + s * 0.8, y - s * 0.5], [x + s, y + s * 0.3], [x, y + s * 0.6]]));
   }
   flat(c, '#d6e1ec', ell(1800, 1060, 230, 64)); flat(c, '#f6f9fc', ell(1800, 1052, 222, 56));
@@ -216,200 +196,22 @@ function snow(c, t, front) {
   c.globalAlpha = 1;
 }
 
-// --------------------------------- MINEIRO ---------------------------------
-const M = {
-  skin: '#ecc8a2', hair: '#3a2a20', cap: '#3f4146', capDark: '#33353a',
-  shirt: '#8e9196', cuff: '#a9acb0', denim: '#3d5a8e', denimCuff: '#5976a6',
-  brass: '#b8913a', glove: '#5b4231', boot: '#4a3426',
-  wood: '#a2703e', metal: '#71757b', metalDark: '#55585d', coal: '#1f1e22', coalHi: '#3b3a41',
-};
-
-// Poses da pá (troca de pose, sem interpolação): topo do cabo + ângulo
-const SHOVEL = {
-  rest:    { top: [120, -250], a: 150 },
-  dip:     { top: [95, -225],  a: 156 },
-  scoop:   { top: [60, -200],  a: 162 },
-  carry:   { top: [-120, -200], a: 0 },
-  throw:   { top: [-120, -200], a: -25 },
-};
-const HANDLE = 320, BLADE = 100;
-const along = (p, t) => [p.top[0] + Math.cos(p.a * D2R) * t, p.top[1] + Math.sin(p.a * D2R) * t];
-
-function drawShovel(c, p, loaded) {
-  c.save(); c.translate(p.top[0], p.top[1]); c.rotate(p.a * D2R);
-  piece(c, M.wood, c => c.roundRect(-4, -7, HANDLE + 4, 14, 7));
-  line(c, [[40, -2], [120, 1]], 1.5, 'rgba(70,40,15,0.5)'); line(c, [[160, 2], [250, -1]], 1.5, 'rgba(70,40,15,0.5)');
-  piece(c, M.metalDark, c => c.roundRect(HANDLE - 26, -10, 36, 20, 4));
-  piece(c, M.metal, poly([[HANDLE + 4, -12], [HANDLE + 16, -32], [HANDLE + 86, -38], [HANDLE + BLADE + 4, 0], [HANDLE + 86, 38], [HANDLE + 16, 32], [HANDLE + 4, 12]]));
-  flat(c, M.metalDark, poly([[HANDLE + 22, -24], [HANDLE + 82, -28], [HANDLE + 94, 0], [HANDLE + 82, 28], [HANDLE + 22, 24]]));
-  if (loaded) {
-    const r = rng(5);
-    for (let i = 0; i < 7; i++) {
-      const x = HANDLE + 30 + r() * 58, y = (r() - 0.5) * 40, s = 9 + r() * 7;
-      piece(c, i % 3 ? M.coal : M.coalHi, poly([[x - s, y], [x - s * 0.2, y - s], [x + s, y - s * 0.4], [x + s * 0.7, y + s * 0.7], [x - s * 0.4, y + s * 0.8]]), { lw: 2 });
-    }
-  }
-  c.restore();
-}
-
-function drawArm(c, S, Hn) {
-  const dx = Hn[0] - S[0], dy = Hn[1] - S[1], len = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
-  c.save(); c.translate(S[0], S[1]); c.rotate(a);
-  const el = Math.min(46, len * 0.45);
-  piece(c, M.skin, c => c.roundRect(el - 6, -13, Math.max(10, len - el + 6), 26, 12));
-  soot(c, el + (len - el) * 0.55, 2, 10, 31, 0.26);
-  piece(c, M.shirt, c => c.roundRect(-18, -19, el + 14, 38, 16));
-  piece(c, M.cuff, c => c.roundRect(el - 10, -20, 16, 40, 6));
-  c.restore();
-  piece(c, M.glove, ell(Hn[0], Hn[1], 22, 20));
-  piece(c, M.glove, ell(Hn[0] + 4, Hn[1] - 16, 9, 11, 0.4));
-}
-
-function drawLeg(c, hipX, deg) {
-  c.save(); c.translate(hipX, -128); c.rotate(-deg * D2R);
-  piece(c, M.denim, c => c.rect(-28, 0, 56, 92));
-  piece(c, M.denimCuff, c => c.roundRect(-30, 78, 60, 22, 5));
-  soot(c, 6, 50, 12, 41 + Math.round(hipX), 0.2);
-  piece(c, M.boot, c => { c.moveTo(-30, 98); c.lineTo(26, 98); c.quadraticCurveTo(54, 102, 56, 120); c.lineTo(-32, 122); c.closePath(); });
-  c.restore();
-}
-
-function mouthShape(c, shape, mx, my, mood) {
-  const k = 0.72, y = my, dark = '#4a1513';
-  const open = (w, d, teeth, tongue) => {
-    w *= k; d *= k;
-    const path = c => { c.moveTo(mx - w, y); c.lineTo(mx + w, y); c.bezierCurveTo(mx + w, y + d * 1.3, mx - w, y + d * 1.3, mx - w, y); c.closePath(); };
-    piece(c, dark, path, { shadow: false, tex: false, lw: 0 });
-    c.save(); c.beginPath(); path(c); c.clip();
-    if (teeth) { c.fillStyle = '#efe9d8'; c.fillRect(mx - w, y, w * 2, teeth * k); }
-    if (tongue) { c.fillStyle = '#c9524f'; c.beginPath(); c.ellipse(mx + w * 0.15, y + d, w * 0.55, d * 0.35, 0, 0, TAU); c.fill(); }
-    c.restore();
-    piece(c, null, path, { lw: 3 });
-  };
-  switch (shape) {
-    case 'small': piece(c, dark, ell(mx, y + 3, 10, 6), { shadow: false, tex: false }); break;
-    case 'oo': piece(c, dark, ell(mx, y + 4, 9, 11), { shadow: false, tex: false }); break;
-    case 'mid': open(24, 22, 6, false); break;
-    case 'ee': open(28, 13, 8, false); break;
-    case 'wide': open(30, 38, 8, true); break;
-    default: {
-      const curve = mood === 'frown' ? -7 : mood === 'smile' ? 7 : 0;
-      c.beginPath(); c.moveTo(mx - 22, y + 2); c.quadraticCurveTo(mx, y + 2 + curve, mx + 20, y - 1);
-      c.lineWidth = 3; c.strokeStyle = OUT; c.lineCap = 'round'; c.stroke();
-    }
-  }
-}
-
-function drawHead(c, st) {
-  const front = st.headFace === 0, fx = front ? 0 : 22;
-  // cabeça
-  piece(c, M.skin, ell(0, -395, 140, 134));
-  c.save(); c.beginPath(); c.ellipse(0, -395, 140, 134, 0, 0, TAU); c.clip();
-  const smudges = front ? [[-76, -345, 34, 11], [84, -352, 26, 12], [14, -290, 16, 13]]
-                        : [[-54, -342, 36, 11], [104, -360, 24, 12], [36, -290, 16, 13]];
-  smudges.forEach(([x, y, r, s]) => soot(c, x, y, r, s));
-  c.restore();
-  // cabelo e orelhas
-  const ear = (x, s) => { piece(c, M.skin, ell(x, -392, 20, 28)); c.beginPath(); c.moveTo(x - s * 4, -406); c.quadraticCurveTo(x + s * 10, -392, x - s * 2, -376); c.lineWidth = 2.5; c.strokeStyle = OUT; c.stroke(); };
-  if (front) {
-    piece(c, M.hair, poly([[-142, -448], [-118, -452], [-124, -404], [-136, -392]]));
-    piece(c, M.hair, poly([[142, -448], [118, -452], [124, -404], [136, -392]]));
-    ear(-140, -1); ear(140, 1);
-  } else {
-    piece(c, M.hair, poly([[-146, -456], [-96, -462], [-104, -416], [-118, -374], [-140, -392]]));
-    ear(-128, -1);
-  }
-  // boina
-  c.save(); c.translate(0, -14);
-  if (front) {
-    piece(c, M.cap, c => { c.moveTo(-158, -446); c.bezierCurveTo(-156, -548, 156, -548, 158, -446); c.quadraticCurveTo(0, -430, -158, -446); c.closePath(); });
-    soot(c, -50, -500, 30, 61, 0.25); soot(c, 70, -490, 24, 62, 0.25);
-    line(c, [[0, -536], [-60, -448]], 2); line(c, [[0, -536], [60, -448]], 2);
-    piece(c, M.capDark, c => { c.moveTo(-122, -446); c.quadraticCurveTo(0, -462, 122, -446); c.quadraticCurveTo(0, -404, -122, -446); c.closePath(); });
-    piece(c, M.capDark, ell(0, -540, 13, 7));
-  } else {
-    piece(c, M.cap, c => { c.moveTo(-156, -440); c.bezierCurveTo(-140, -545, 90, -568, 154, -470); c.lineTo(150, -452); c.quadraticCurveTo(0, -440, -156, -440); c.closePath(); });
-    soot(c, -60, -500, 32, 63, 0.25); soot(c, 60, -500, 22, 64, 0.25);
-    line(c, [[-14, -548], [-92, -446]], 2); line(c, [[-14, -548], [52, -450]], 2);
-    piece(c, M.capDark, c => { c.moveTo(52, -458); c.quadraticCurveTo(170, -482, 214, -446); c.quadraticCurveTo(150, -426, 52, -440); c.closePath(); });
-    piece(c, M.capDark, ell(-14, -548, 13, 7, -0.3));
-  }
-  c.restore();
-  // olhos separados (como no desenho original), sobrancelhas, olheiras
-  const ex = front ? [-46, 46] : [fx - 42, fx + 42], erx = front ? [27, 27] : [26, 23];
-  const e = st.eyes;
-  ex.forEach((x, i) => {
-    const ry = e.wide ? 35 : 31, y = -398;
-    if (e.state === 'closed') {
-      piece(c, M.skin, ell(x, y, erx[i], ry), { shadow: false });
-      line(c, [[x - erx[i] + 6, y + 6], [x, y + 12], [x + erx[i] - 6, y + 6]], 2.5);
-    } else {
-      piece(c, '#ffffff', ell(x, y, erx[i], ry), { shadow: false });
-      c.fillStyle = OUT; c.beginPath(); c.arc(x + e.look[0] * 11, y + e.look[1] * 13, e.wide ? 4.5 : 6, 0, TAU); c.fill();
-    }
-    // sobrancelha: ponta interior sobe quando triste
-    const inner = (i === 0 ? 1 : -1), by = -438 - (e.wide ? 5 : 0);
-    const lift = st.brows === 'sad' ? 12 : st.brows === 'tired' ? -2 : 0;
-    c.beginPath(); c.moveTo(x - inner * 22, by + 2); c.quadraticCurveTo(x, by - 6, x + inner * 20, by - lift);
-    c.lineWidth = 3; c.strokeStyle = OUT; c.lineCap = 'round'; c.stroke();
-    line(c, [[x - 13, -360], [x, -356], [x + 13, -360]], 2);
-  });
-  // nariz e boca
-  const nx = front ? 0 : fx + 16;
-  c.beginPath(); c.moveTo(nx - 6, -382); c.quadraticCurveTo(nx + 18, -369, nx - 2, -353); c.lineWidth = 3; c.strokeStyle = OUT; c.stroke();
-  mouthShape(c, st.mouth, front ? 0 : fx + 32, -318, st.mood);
-}
-
-function drawMiner(c, st) {
-  c.save();
-  c.translate(st.x, st.y + st.hop);
-  c.scale(KS, KS);
-  c.save(); c.filter = `blur(${3 * CAM_S}px)`; c.fillStyle = 'rgba(60,70,90,0.24)';
-  c.beginPath(); c.ellipse(10, 4 - st.hop, 120, 14, 0, 0, TAU); c.fill(); c.restore();
-  c.rotate(st.rot || 0);
-  // pernas (adulto: alternam, rígidas, a partir da anca)
-  drawLeg(c, -34, st.legL); drawLeg(c, 34, st.legR);
-  // tronco: camisa, jardineiras, alças
-  piece(c, M.shirt, c => { c.moveTo(-72, -266); c.lineTo(72, -266); c.quadraticCurveTo(88, -200, 84, -140); c.lineTo(-84, -140); c.quadraticCurveTo(-88, -200, -72, -266); c.closePath(); });
-  piece(c, M.cuff, poly([[-34, -270], [-2, -244], [-8, -270]]), { shadow: false });
-  piece(c, M.cuff, poly([[34, -270], [2, -244], [8, -270]]), { shadow: false });
-  piece(c, M.denim, c => { c.moveTo(-86, -190); c.lineTo(86, -190); c.lineTo(88, -120); c.lineTo(-88, -120); c.closePath(); });
-  piece(c, M.denim, c => c.roundRect(-44, -252, 88, 70, 4));
-  piece(c, M.denim, poly([[-66, -266], [-50, -268], [-34, -244], [-46, -238]]));
-  piece(c, M.denim, poly([[66, -266], [50, -268], [34, -244], [46, -238]]));
-  piece(c, M.brass, c => { c.roundRect(-44, -248, 14, 14, 3); c.roundRect(30, -248, 14, 14, 3); }, { lw: 2.5 });
-  piece(c, '#365183', c => c.rect(-26, -232, 52, 34), { lw: 2.5 });
-  line(c, [[0, -186], [0, -124]], 2.5);
-  soot(c, -40, -150, 18, 51, 0.22); soot(c, 50, -210, 12, 52, 0.2);
-  // cabeça (peça rígida, troca de vista)
-  drawHead(c, st);
-  // pá e braços
-  const p = SHOVEL[st.shovel];
-  drawShovel(c, p, st.loaded);
-  const h1 = along(p, 18), h2 = along(p, 180);
-  const SL = [-64, -250], SR = [64, -250];
-  const [hl, hr] = h1[0] < h2[0] ? [h1, h2] : [h2, h1];
-  drawArm(c, SL, hl); drawArm(c, SR, hr);
-  c.restore();
-}
-
 // -------------------------------- VAGONETA ---------------------------------
+const COAL = '#1f1e22', COAL_HI = '#3b3a41';
 function drawCart(c, x, full, roll) {
-  const y = 912;
-  c.save(); c.translate(x, y);
+  c.save(); c.translate(x, RAIL_Y);
   c.save(); c.filter = `blur(${3 * CAM_S}px)`; c.fillStyle = 'rgba(60,70,90,0.22)'; c.beginPath(); c.ellipse(0, 2, 120, 10, 0, 0, TAU); c.fill(); c.restore();
-  // carvão (por trás da borda)
   const r = rng(full ? 9 : 8), top = full ? -214 : -168;
-  piece(c, M.coal, c => { c.moveTo(-108, -150); c.quadraticCurveTo(-60, top - 10, 0, top); c.quadraticCurveTo(60, top - 6, 108, -150); c.closePath(); }, { lw: 2.5 });
+  piece(c, COAL, c => { c.moveTo(-108, -150); c.quadraticCurveTo(-60, top - 10, 0, top); c.quadraticCurveTo(60, top - 6, 108, -150); c.closePath(); }, { lw: 2.5 });
   for (let i = 0; i < (full ? 14 : 8); i++) {
     const px = -90 + r() * 180, py = -152 - r() * (full ? 52 : 14), s = 9 + r() * 8;
-    flat(c, i % 2 ? M.coalHi : '#2b2a30', poly([[px - s, py], [px - s * 0.2, py - s * 0.9], [px + s, py - s * 0.3], [px + s * 0.5, py + s * 0.6]]));
+    flat(c, i % 2 ? COAL_HI : '#2b2a30', poly([[px - s, py], [px - s * 0.2, py - s * 0.9], [px + s, py - s * 0.3], [px + s * 0.5, py + s * 0.6]]));
   }
   piece(c, '#6c625b', poly([[-118, -152], [118, -152], [98, -40], [-98, -40]]));
   piece(c, '#4f4742', c => c.roundRect(-124, -162, 248, 20, 4));
   piece(c, '#4f4742', c => c.rect(-100, -60, 200, 14), { lw: 2.5 });
   c.fillStyle = '#3a3330'; [-80, -40, 0, 40, 80].forEach(px => { c.beginPath(); c.arc(px, -132, 4, 0, TAU); c.fill(); });
-  soot(c, -40, -100, 30, 71, 0.25);
+  soot(c, -40, -100, 30, 71);
   for (const wx of [-60, 60]) {
     piece(c, '#2c2b2e', ell(wx, -24, 28, 28));
     piece(c, '#8a8f96', ell(wx, -24, 9, 9), { lw: 2 });
@@ -419,38 +221,130 @@ function drawCart(c, x, full, roll) {
   c.restore();
 }
 
+// ------------------------------ FANTOCHE MINEIRO ---------------------------
+// Coordenadas = píxeis do desenho recortado (580x735). Âncora: centro dos pés.
+const IMG = {};
+const ANCHOR = [345, 728], KS = 0.82;
+const LINE = '#2b2725';
+// valores de mineiro/rig.json (embutidos porque file:// não permite fetch)
+const RIG = {"eyes": [{"cx": 336.26, "cy": 219.87, "rx": 29.0, "ry": 34.5, "px": 336.38, "py": 214.46, "pr": 6.93},
+  {"cx": 449.40, "cy": 209.73, "rx": 26.5, "ry": 33.0, "px": 448.04, "py": 205.64, "pr": 6.41}],
+  "skin": [219, 180, 149], "mouth": {"cx": 401.5, "cy": 299.6},
+  "pivots": {"neck": [358, 382], "shoulders": [360, 440], "hipL": [287, 606], "hipR": [398, 606], "waist": [345, 600]}};
+
+function loadAssets() {
+  const names = ['head', 'torso', 'legL', 'legR', 'arms', 'arms_empty', 'mouth_closed'];
+  return Promise.all(names.map(n => new Promise((ok, err) => {
+    const im = new Image(); im.onload = () => { IMG[n] = im; ok(); }; im.onerror = err; im.src = `mineiro/${n}.png`;
+  })));
+}
+
+function shadowOn(c) { c.shadowColor = 'rgba(20,10,0,0.28)'; c.shadowOffsetX = c.shadowOffsetY = 2 * CAM_S; c.shadowBlur = 2 * CAM_S; }
+function shadowOff(c) { c.shadowColor = 'transparent'; c.shadowBlur = c.shadowOffsetX = c.shadowOffsetY = 0; }
+function rotAbout(c, [px, py], deg) { c.translate(px, py); c.rotate(deg * D2R); c.translate(-px, -py); }
+function drawPiece(c, im, pivot, deg) { c.save(); if (deg) rotAbout(c, pivot, deg); shadowOn(c); c.drawImage(im, 0, 0); shadowOff(c); c.restore(); }
+
+// Bocas de troca, no estilo do traço original (a fechada é a original)
+function mouth(c, shape, mood) {
+  const { cx, cy } = RIG.mouth;
+  if (shape === 'closed') {
+    if (mood === 'frown') { c.save(); c.translate(0, cy * 2 + 4); c.scale(1, -1); c.drawImage(IMG.mouth_closed, 0, 0); c.restore(); }
+    else c.drawImage(IMG.mouth_closed, 0, 0);
+    return;
+  }
+  const dark = '#3b1714';
+  const open = (w, d, teeth, tongue) => {
+    const path = c => { c.moveTo(cx - w, cy - 3); c.quadraticCurveTo(cx, cy - 7, cx + w, cy - 4); c.bezierCurveTo(cx + w, cy + d * 1.3, cx - w, cy + d * 1.3, cx - w, cy - 3); c.closePath(); };
+    c.beginPath(); path(c); c.fillStyle = dark; c.fill();
+    c.save(); c.beginPath(); path(c); c.clip();
+    if (teeth) { c.fillStyle = '#ece4d3'; c.fillRect(cx - w, cy - 8, w * 2, teeth + 5); }
+    if (tongue) { c.fillStyle = '#b4504a'; c.beginPath(); c.ellipse(cx + 3, cy + d, w * 0.55, d * 0.35, 0, 0, TAU); c.fill(); }
+    c.restore();
+    c.beginPath(); path(c); c.lineWidth = 3.4; c.strokeStyle = LINE; c.lineJoin = 'round'; c.stroke();
+  };
+  const dot = (rx, ry) => { c.beginPath(); c.ellipse(cx, cy + 2, rx, ry, 0, 0, TAU); c.fillStyle = dark; c.fill(); c.lineWidth = 3; c.strokeStyle = LINE; c.stroke(); };
+  switch (shape) {
+    case 'small': dot(8, 6); break;
+    case 'oo': dot(8, 10); break;
+    case 'mid': open(18, 15, 4, false); break;
+    case 'ee': open(22, 9, 6, false); break;
+    case 'wide': open(22, 26, 6, true); break;
+  }
+}
+
+function face(c, st) {
+  const skin = `rgb(${RIG.skin.join(',')})`;
+  RIG.eyes.forEach(e => {
+    if (st.eyes === 'closed') {
+      // pálpebra cor de pele por cima do branco do olho (peça de troca)
+      c.save(); c.beginPath(); c.ellipse(e.cx, e.cy, e.rx + 0.5, e.ry + 0.5, 0, 0, TAU); c.clip();
+      c.fillStyle = skin; c.fillRect(e.cx - e.rx, e.cy - e.ry, e.rx * 2, e.ry * 2);
+      c.globalCompositeOperation = 'multiply'; TEX.setTransform(new DOMMatrix()); c.fillStyle = TEX; c.fillRect(e.cx - e.rx, e.cy - e.ry, e.rx * 2, e.ry * 2);
+      c.restore();
+      c.beginPath(); c.moveTo(e.cx - e.rx + 6, e.cy + 8); c.quadraticCurveTo(e.cx, e.cy + 16, e.cx + e.rx - 6, e.cy + 8);
+      c.lineWidth = 3; c.strokeStyle = LINE; c.lineCap = 'round'; c.stroke();
+      return;
+    }
+    const kx = e.rx - e.pr - 7, ky = e.ry - e.pr - 8;
+    const px = clamp((e.px - e.cx) + st.look[0] * kx, -kx, kx), py = clamp((e.py - e.cy) + st.look[1] * ky, -ky, ky);
+    c.beginPath(); c.arc(e.cx + px, e.cy + py, st.wide ? e.pr * 0.75 : e.pr, 0, TAU); c.fillStyle = '#1d1b1a'; c.fill();
+  });
+  mouth(c, st.mouth, st.mood);
+}
+
+// Matrizes do fantoche (as mesmas servem para desenhar e para saber onde está a lâmina)
+const puppetMatrix = st => new DOMMatrix().translate(st.x, st.y + st.hop).scale(KS).translate(-ANCHOR[0], -ANCHOR[1]);
+const rotM = (m, [px, py], d) => m.translate(px, py).rotate(d).translate(-px, -py);
+const armsMatrix = st => rotM(rotM(puppetMatrix(st), RIG.pivots.waist, st.lean), RIG.pivots.shoulders, st.arms);
+
+function drawMiner(c, st) {
+  const P = RIG.pivots;
+  c.save();
+  c.save(); c.filter = `blur(${3 * CAM_S}px)`; c.fillStyle = 'rgba(60,70,90,0.24)';
+  c.beginPath(); c.ellipse(st.x, st.y + 4, 128, 15, 0, 0, TAU); c.fill(); c.restore();
+  c.setTransform(c.getTransform().multiply(puppetMatrix(st)));
+  drawPiece(c, IMG.legL, P.hipL, st.legL);
+  drawPiece(c, IMG.legR, P.hipR, st.legR);
+  c.save(); rotAbout(c, P.waist, st.lean);
+  drawPiece(c, IMG.torso, P.waist, 0);
+  c.save(); rotAbout(c, P.neck, st.head);
+  drawPiece(c, IMG.head, P.neck, 0);
+  face(c, st);
+  c.restore();
+  drawPiece(c, st.loaded ? IMG.arms : IMG.arms_empty, P.shoulders, st.arms);
+  c.restore();
+  c.restore();
+}
+
 // -------------------------------- TIMELINE ---------------------------------
-const GROUND = 968, MINER_X = 800, CART_X = 1270, KS = 1.12; // KS: escala do mineiro
-const T_STOP = 1.08, T_SHOT2 = 2.5, T_TALK1 = 2.75, T_SHOT3 = 3.83, T_ROLL = 3.92, T_TALK2 = 4.58;
+const GROUND = 975, MINER_X = 1000;
+const T_STOP = 1.33, T_SHOT2 = 2.5, T_TALK1 = 2.75, T_SHOT3 = 3.83, T_ROLL = 3.92, T_TALK2 = 4.58;
+const T_TOSS = 1.92, T_LAND = 2.25;
 const SHEET_1 = ['mid', 'ee', 'small', 'oo', 'closed', 'ee', 'wide', 'closed', 'mid', 'wide', 'ee', 'wide', 'closed']; // "Mais um dia na mina..."
 const SHEET_2 = ['wide', 'wide', 'closed', 'oo', 'mid', 'closed'];                                                      // "Ah, bolas."
-
-// sequência de pá: [início, pose, carregada, inclinação]
-const SHOVEL_SEQ = [[0, 'rest', false, 0], [1.25, 'dip', false, -0.02], [1.33, 'scoop', false, -0.05], [1.67, 'carry', true, 0],
-                    [1.83, 'throw', false, 0.05], [2.25, 'dip', false, 0], [2.33, 'rest', false, 0]];
-const T_FLY = 1.83, T_LAND = 2.17;
+// pá: [início, rotação dos braços, inclinação do corpo, carregada]
+const ACTION = [[0, 0, 0, true], [1.5, -2, 1, true], [1.58, -4, 2, true], [1.83, 2, -1, true], [T_TOSS, 7, -3, false], [2.33, 2, -1, false], [2.42, 0, 0, false]];
 
 function minerState(t) {
   const q = twos(t);
   const p = clamp(q / T_STOP, 0, 1);
-  const st = { x: lerp(-260, MINER_X, p), y: GROUND, hop: 0, rot: 0, legL: 0, legR: 0, headFace: 1,
-    shovel: 'rest', loaded: false, mouth: 'closed', mood: 'neutral', brows: 'tired', eyes: { state: 'open', look: [0.7, 0] } };
-  if (p > 0 && p < 1) {                                      // andar: 4 passos/s, pernas alternam
+  const st = { x: lerp(-300, MINER_X, p), y: GROUND, hop: 0, legL: 0, legR: 0, lean: 0, arms: 0, head: 0,
+    loaded: true, look: [0, 0], eyes: 'open', wide: false, mouth: 'closed', mood: 'neutral' };
+  if (p > 0 && p < 1) {                         // andar: pernas alternam, salto na pose de impulso
     const i = poseIdx(q, 0), ph = i % 3, s = Math.floor(i / 3) % 2 ? 1 : -1;
-    st.legL = ph === 1 ? 0 : s * (ph === 0 ? 9 : 16); st.legR = -st.legL;
-    st.hop = ph === 1 ? -10 : 0;
+    st.legL = ph === 1 ? 0 : s * (ph === 0 ? 5 : 9); st.legR = -st.legL;
+    st.hop = ph === 1 ? -12 : 0;
   }
-  for (const [t0, pose, loaded, rot] of SHOVEL_SEQ) if (q >= t0) { st.shovel = pose; st.loaded = loaded; st.rot = rot; }
-  if (between(q, 1.25, 1.75)) st.eyes.look = [-0.7, 0.5];   // olha para a pilha
-  if (between(q, 1.75, 2.42)) st.eyes.look = [0.9, -0.1];   // olha para a vagoneta
-  if (q >= 2.42) { st.headFace = 0; st.eyes.look = [0, 0]; } // cabeça vira para a câmara
-  if (between(q, T_SHOT2 + POSE, T_TALK1)) st.eyes.state = 'closed'; // pestaneja antes de falar
+  for (const [t0, arms, lean, loaded] of ACTION) if (q >= t0) { st.arms = arms; st.lean = lean; st.loaded = loaded; }
+  if (between(q, 1.5, 1.83)) st.look = [-0.8, 0.7];      // olha para a pilha
+  if (between(q, 1.83, 2.42)) st.look = [-1, -0.2];      // segue o carvão até à vagoneta
+  if (between(q, T_SHOT2 + POSE, T_TALK1)) st.eyes = 'closed';   // pestaneja antes de falar
   if (between(q, T_TALK1, T_TALK1 + SHEET_1.length * POSE)) st.mouth = SHEET_1[poseIdx(q, T_TALK1)];
-  if (q >= 4.0) st.eyes.look = [0.9, 0];                    // os olhos apanham a vagoneta...
-  if (q >= 4.08) { st.headFace = 1; }                       // ...depois a cabeça vira
-  if (q >= 4.25) { st.eyes.wide = true; st.brows = 'sad'; st.mood = 'frown'; }
+  if (q >= 4.0) st.look = [-1, 0];                       // os olhos apanham a vagoneta...
+  if (q >= 4.08) st.head = -3;                           // ...e a cabeça vai atrás
+  if (q >= 4.25) { st.wide = true; st.mood = 'frown'; }
   if (between(q, 4.25, 4.42)) st.mouth = 'small';
-  if (between(q, 4.42, T_TALK2)) st.eyes.state = 'closed';
+  if (between(q, 4.42, T_TALK2)) st.eyes = 'closed';
   if (q >= T_TALK2) st.mouth = SHEET_2[Math.min(poseIdx(q, T_TALK2), SHEET_2.length - 1)];
   return st;
 }
@@ -459,34 +353,33 @@ function cartX(t) {
   const q = twos(t);
   if (q < T_ROLL) return CART_X;
   const d = q - T_ROLL;
-  return CART_X + 60 * d + 0.5 * 2600 * d * d;
+  return CART_X - 50 * d - 0.5 * 1500 * d * d;
 }
 
 function coalFlight(c, t) {
   const q = twos(t);
-  const i = poseIdx(q, T_FLY), n = poseIdx(T_LAND, T_FLY);
-  const start = along(SHOVEL.throw, HANDLE + 50);
-  const sx = MINER_X + start[0] * KS, sy = GROUND + start[1] * KS;
+  const i = poseIdx(q, T_TOSS), n = poseIdx(T_LAND, T_TOSS);
   if (i >= 0 && i < n) {
+    const b = armsMatrix(minerState(T_TOSS)).transformPoint(new DOMPoint(95, 625));
     const r = rng(19), p = (i + 1) / (n + 1);
-    for (let k = 0; k < 6; k++) {
-      const tx = CART_X - 60 + r() * 120, ty = 912 - 190 + r() * 20;
-      const x = lerp(sx, tx, p) + (r() - 0.5) * 30, y = lerp(sy, ty, p) - Math.sin(p * Math.PI) * 130 + (r() - 0.5) * 24, s = 10 + r() * 7;
-      piece(c, k % 2 ? M.coal : M.coalHi, poly([[x - s, y], [x - s * 0.2, y - s], [x + s, y - s * 0.4], [x + s * 0.7, y + s * 0.7], [x - s * 0.4, y + s * 0.8]]), { lw: 2 });
+    for (let k = 0; k < 7; k++) {
+      const tx = CART_X - 60 + r() * 120, ty = RAIL_Y - 190 + r() * 20;
+      const x = lerp(b.x, tx, p) + (r() - 0.5) * 34, y = lerp(b.y, ty, p) - Math.sin(p * Math.PI) * 170 + (r() - 0.5) * 26, s = 10 + r() * 7;
+      piece(c, k % 2 ? COAL : COAL_HI, poly([[x - s, y], [x - s * 0.2, y - s], [x + s, y - s * 0.4], [x + s * 0.7, y + s * 0.7], [x - s * 0.4, y + s * 0.8]]), { lw: 2 });
     }
   }
-  const j = poseIdx(q, T_LAND);                             // nuvem de pó: 2 poses
+  const j = poseIdx(q, T_LAND);
   if (j === 0 || j === 1) {
-    const R = rng(23), cx = CART_X, cy = 912 - 215, k = j === 0 ? 1 : 1.5;
+    const Rr = rng(23), cx = CART_X, cy = RAIL_Y - 215, k = j === 0 ? 1 : 1.5;
     c.save(); c.globalAlpha = j === 0 ? 0.9 : 0.6;
-    flat(c, '#4b4848', c => { for (let m = 0; m < 6; m++) { const a = m / 6 * Math.PI - Math.PI, rr = (26 + R() * 14) * k; const px = cx + Math.cos(a) * 60 * k, py = cy + Math.sin(a) * 26 * k; c.moveTo(px + rr, py); c.arc(px, py, rr, 0, TAU); } });
+    flat(c, '#4b4848', c => { for (let m = 0; m < 6; m++) { const a = m / 6 * Math.PI - Math.PI, rr = (26 + Rr() * 14) * k; const px = cx + Math.cos(a) * 60 * k, py = cy + Math.sin(a) * 26 * k; c.moveTo(px + rr, py); c.arc(px, py, rr, 0, TAU); } });
     c.restore();
   }
 }
 
 // --------------------------------- CÂMARA ----------------------------------
 function camera(t) {
-  if (between(t, T_SHOT2, T_SHOT3)) return { s: 2.1, fx: MINER_X + 70, fy: GROUND - 405 * KS };
+  if (between(t, T_SHOT2, T_SHOT3)) return { s: 1.75, fx: MINER_X + 40, fy: GROUND - 356 };
   return { s: 1, fx: W / 2, fy: H / 2 };
 }
 function applyCam(c, cam, depth) {
@@ -515,8 +408,10 @@ function renderFrame(t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0); snow(ctx, t, false);
   applyCam(ctx, cam, 1); CAM_S = cam.s;
   const cx = cartX(t);
-  drawCart(ctx, cx, twos(t) >= T_LAND, cx - CART_X);
+  drawCart(ctx, cx, twos(t) >= T_LAND, CART_X - cx);
+  ctx.imageSmoothingQuality = 'high';
   drawMiner(ctx, minerState(t));
+  applyCam(ctx, cam, 1);
   coalFlight(ctx, t);
   CAM_S = 1;
   ctx.setTransform(1, 0, 0, 1, 0, 0); snow(ctx, t, true);
@@ -525,15 +420,16 @@ function renderFrame(t) {
 
 buildBackground();
 window.renderFrame = renderFrame;
-window.ready = true;
-
-if (!location.search.includes('render')) {
-  const t0 = performance.now();
-  (function loop(now) {
-    renderFrame(Math.floor(((now - t0) / 1000) % DURATION * FPS) / FPS);
-    requestAnimationFrame(loop);
-  })(t0);
-}
+loadAssets().then(() => {
+  window.ready = true;
+  if (!location.search.includes('render')) {
+    const t0 = performance.now();
+    (function loop(now) {
+      renderFrame(Math.floor(((now - t0) / 1000) % DURATION * FPS) / FPS);
+      requestAnimationFrame(loop);
+    })(t0);
+  }
+});
 </script>
 </body>
 </html>

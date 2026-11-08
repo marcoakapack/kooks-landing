@@ -29,3 +29,12 @@ Resumo da pesquisa sobre como a série é produzida. **Confirmado** quer dizer q
 ## Limites
 - Não há som. As falas aparecem como legendas, que a série não usa.
 - Os valores numéricos (bob, ângulos, cores) vêm de observação. Nenhuma fonte os publica.
+
+## Personagem a partir de um desenho (mineiro.html)
+Para a personagem ficar igual ao desenho original, o desenho é transformado num fantoche de recorte, como a série faz com os desenhos dos criadores:
+1. `tools/cortar_mineiro.py` corta a imagem em peças: cabeça, tronco, perna esquerda, perna direita e braços com a pá (com e sem carvão). Guarda as peças em `mineiro/` com coordenadas partilhadas.
+2. O que estava escondido por baixo de cada peça é reconstruído a partir dos píxeis vizinhos. Assim não aparecem buracos quando a peça roda.
+3. As pupilas e a boca saem da textura e passam a ser peças de troca desenhadas por código. A boca fechada é a original, recortada.
+4. Na animação, as peças rodam rigidamente em pivots (anca, cintura, ombros, pescoço) e mudam de pose a cada 2 frames.
+
+Limite: o desenho só tem a vista de 3/4, por isso a cabeça não vira para a frente. Para isso seria preciso um desenho de frente da mesma personagem.
