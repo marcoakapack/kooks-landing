@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animação Cutout</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// ---------------------------------------------------------------------------
+// Animação de 5 s em estilo "cutout" de papel (cabeças grandes, olhos colados,
+// corpos em trapézio, andar aos saltinhos, cenário de montanha com neve).
+// Tudo desenhado com código — sem imagens.  renderFrame(t) desenha o instante t.
+// ---------------------------------------------------------------------------
+const W = 1920, H = 1080, DURATION = 5;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const OUT = '#141414';
+const TAU = Math.PI * 2;
+
+// RNG determinístico (cada render sai igual)
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, p) => a + (b - a) * p;
+const between = (t, a, b) => t >= a && t < b;
+// "animar a 2s": as personagens mexem-se a 12 fps, como em animação de recortes
+const onTwos = t => Math.floor(t * 12) / 12;
+
+// Desenha uma forma com sombra de papel recortado na fill e contorno preto
+function shape(c, fill, build, lw = 4, shadow = true) {
+  c.beginPath(); build(c);
+  if (fill) {
+    if (shadow) {
+      c.shadowColor = 'rgba(0,0,0,0.22)';
+      c.shadowOffsetX = 3; c.shadowOffsetY = 3; c.shadowBlur = 4;
+    }
+    c.fillStyle = fill; c.fill();
+    c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
+  }
+  if (lw) { c.lineWidth = lw; c.strokeStyle = OUT; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke(); }
+}
+const ell = (x, y, rx, ry, r = 0) => c => c.ellipse(x, y, rx, ry, r, 0, TAU);
+
+// ------------------------------- CENÁRIO -----------------------------------
+const bg = document.createElement('canvas');
+bg.width = W; bg.height = H;
+
+function cloud(c, x, y, s) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  c.fillStyle = '#ffffff';
+  c.shadowColor = 'rgba(0,0,0,0.10)'; c.shadowOffsetY = 4; c.shadowBlur = 4;
+  c.beginPath();
+  [[0, 0, 60], [55, -25, 55], [110, 0, 50], [55, 15, 50], [-45, 10, 40], [150, 15, 35]]
+    .forEach(([cx, cy, r]) => { c.moveTo(cx + r, cy); c.arc(cx, cy, r, 0, TAU); });
+  c.fill();
+  c.restore();
+}
+
+function tree(c, x, y, s) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  shape(c, '#6b4428', c => c.rect(-12, -40, 24, 42), 3);
+  const g = '#2f6b3f';
+  shape(c, g, c => { c.moveTo(-80, -30); c.lineTo(80, -30); c.lineTo(0, -150); c.closePath(); }, 3);
+  shape(c, g, c => { c.moveTo(-65, -100); c.lineTo(65, -100); c.lineTo(0, -210); c.closePath(); }, 3);
+  shape(c, g, c => { c.moveTo(-48, -165); c.lineTo(48, -165); c.lineTo(0, -260); c.closePath(); }, 3);
+  // neve nas pontas
+  shape(c, '#ffffff', c => { c.moveTo(-19, -222); c.lineTo(0, -260); c.lineTo(19, -222); c.lineTo(9, -230); c.lineTo(0, -220); c.lineTo(-9, -230); c.closePath(); }, 3, false);
+  c.restore();
+}
+
+function house(c, x, y, s, wall, roof) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  shape(c, wall, c => c.rect(-90, -110, 180, 110));
+  shape(c, roof, c => { c.moveTo(-115, -105); c.lineTo(0, -195); c.lineTo(115, -105); c.closePath(); });
+  shape(c, '#ffffff', c => { c.moveTo(-115, -105); c.lineTo(0, -195); c.lineTo(115, -105); c.lineTo(95, -112); c.lineTo(70, -118); c.lineTo(40, -128); c.lineTo(0, -160); c.lineTo(-40, -128); c.lineTo(-70, -118); c.lineTo(-95, -112); c.closePath(); }, 3, false);
+  shape(c, '#ffe27a', c => c.rect(-62, -80, 40, 36), 3);
+  shape(c, '#ffe27a', c => c.rect(22, -80, 40, 36), 3);
+  shape(c, '#6b4428', c => c.rect(-18, -60, 36, 60), 3);
+  shape(c, '#7a7a7a', c => c.rect(45, -205, 26, 55), 3);
+  c.restore();
+}
+
+function buildBackground() {
+  const c = bg.getContext('2d');
+  // céu
+  c.fillStyle = '#86c5ec'; c.fillRect(0, 0, W, H);
+  cloud(c, 260, 150, 1.1); cloud(c, 1050, 110, 0.85); cloud(c, 1600, 200, 1.0);
+
+  // montanhas
+  const peaks = [[-60, 820], [180, 330], [390, 480], [620, 250], [850, 460], [1060, 300], [1290, 490], [1500, 270], [1720, 440], [1990, 330], [1990, 820]];
+  shape(c, '#71879f', c => { c.moveTo(-60, 820); peaks.forEach(p => c.lineTo(p[0], p[1])); c.lineTo(1990, 820); c.closePath(); });
+  const r = rng(7);
+  for (let i = 1; i < peaks.length - 1; i++) {
+    const [px, py] = peaks[i];
+    if (py > 400) continue; // só os picos altos têm neve
+    const L = peaks[i - 1], R = peaks[i + 1], f = 0.36;
+    const lx = lerp(px, L[0], f), ly = lerp(py, L[1], f);
+    const rx = lerp(px, R[0], f), ry = lerp(py, R[1], f);
+    shape(c, '#ffffff', c => {
+      c.moveTo(px, py); c.lineTo(rx, ry);
+      const n = 5;
+      for (let k = 1; k < n; k++) {
+        const x = lerp(rx, lx, k / n), y = lerp(ry, ly, k / n) + (k % 2 ? -26 - r() * 12 : 6);
+        c.lineTo(x, y);
+      }
+      c.lineTo(lx, ly); c.closePath();
+    }, 3, false);
+  }
+
+  // colinas de neve
+  shape(c, '#e6eef5', c => {
+    c.moveTo(-50, 720); c.quadraticCurveTo(300, 590, 700, 680); c.quadraticCurveTo(1100, 770, 1500, 650);
+    c.quadraticCurveTo(1800, 590, 1970, 680); c.lineTo(1970, 1100); c.lineTo(-50, 1100); c.closePath();
+  });
+
+  // vila ao fundo
+  house(c, 1560, 690, 0.75, '#b9563d', '#5b3a2c');
+  house(c, 300, 690, 0.6, '#5f8fb8', '#3d3d55');
+
+  // pinheiros
+  [[90, 730, 0.95], [190, 710, 0.7], [520, 690, 0.65], [610, 705, 0.85], [1330, 700, 0.7],
+   [1420, 715, 0.9], [1760, 690, 0.75], [1860, 720, 1.0]].forEach(([x, y, s]) => tree(c, x, y, s));
+
+  // estrada
+  shape(c, '#8e949b', c => c.rect(-10, 755, W + 20, 75));
+  c.fillStyle = '#f2c94c';
+  for (let x = 20; x < W; x += 140) { c.beginPath(); c.rect(x, 787, 70, 10); c.fill(); }
+
+  // chão de neve à frente
+  shape(c, '#f4f7fa', c => {
+    c.moveTo(-20, 840); c.quadraticCurveTo(500, 822, 960, 838); c.quadraticCurveTo(1450, 852, 1940, 830);
+    c.lineTo(1940, 1100); c.lineTo(-20, 1100); c.closePath();
+  });
+  // montinhos de neve
+  [[1700, 960, 150, 40], [140, 990, 180, 45]].forEach(([x, y, rx, ry]) =>
+    shape(c, '#ffffff', c => c.ellipse(x, y, rx, ry, 0, Math.PI, TAU), 3));
+
+  // placa de paragem
+  shape(c, '#9aa3ab', c => c.rect(1525, 560, 16, 340));
+  shape(c, '#ffffff', c => c.rect(1453, 520, 160, 104));
+  c.strokeStyle = '#c0392b'; c.lineWidth = 8; c.strokeRect(1465, 532, 136, 80);
+  c.fillStyle = '#c0392b'; c.font = '900 44px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('BUS', 1533, 573);
+  shape(c, '#555', c => c.ellipse(1533, 902, 40, 10, 0, 0, TAU), 3, false);
+}
+
+// textura de papel por cima de tudo
+const paper = document.createElement('canvas');
+function buildPaper() {
+  paper.width = W; paper.height = H;
+  const c = paper.getContext('2d');
+  const img = c.createImageData(W, H), d = img.data, r = rng(42);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = 200 + r() * 55;
+    d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+  }
+  c.putImageData(img, 0, 0);
+  // fibras
+  c.strokeStyle = 'rgba(120,110,95,0.35)'; c.lineWidth = 1;
+  for (let i = 0; i < 1400; i++) {
+    const x = r() * W, y = r() * H, a = r() * TAU, l = 4 + r() * 14;
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+  }
+}
+
+// neve a cair
+const flakes = (() => { const r = rng(3); return Array.from({ length: 110 }, () => ({ x: r() * W, y: r() * H, s: 3 + r() * 5, v: 60 + r() * 70, w: r() * TAU, front: r() < 0.35 })); })();
+function snow(c, t, front) {
+  c.fillStyle = '#ffffff';
+  for (const f of flakes) {
+    if (f.front !== front) continue;
+    const y = (f.y + f.v * t) % (H + 20) - 10;
+    const x = f.x + Math.sin(t * 1.5 + f.w) * 18;
+    c.beginPath(); c.arc(x, y, f.s, 0, TAU); c.fill();
+  }
+}
+
+// ----------------------------- PERSONAGENS ---------------------------------
+const KID_A = {
+  skin: '#fde0bd', jacket: '#25a196', hem: '#1b7d74', pants: '#3a4a8d', mitten: '#f4c430',
+  head: 'beanie', hat: '#7c3fa3', band: '#5d2c7d', pom: '#f4c430',
+};
+const KID_B = {
+  skin: '#fde0bd', jacket: '#e2a12b', hem: '#b97e17', pants: '#5a4636', mitten: '#d6392f',
+  head: 'hair', hair: '#5b391c', scarf: '#d6392f',
+};
+
+function arm(c, k, side, angleDeg) {
+  const sx = side * 66, sy = -138, len = 72;
+  const a = angleDeg * Math.PI / 180;
+  const hx = sx + Math.cos(a) * len * side, hy = sy + Math.sin(a) * len;
+  c.lineCap = 'round';
+  c.strokeStyle = OUT; c.lineWidth = 42;
+  c.beginPath(); c.moveTo(sx, sy); c.lineTo(hx, hy); c.stroke();
+  c.strokeStyle = k.jacket; c.lineWidth = 34;
+  c.beginPath(); c.moveTo(sx, sy); c.lineTo(hx, hy); c.stroke();
+  // luva
+  shape(c, k.mitten, ell(hx + side * 4, hy - 14, 9, 11, -0.4 * side), 3);
+  shape(c, k.mitten, ell(hx, hy, 20, 19), 3);
+}
+
+function mouth(c, m, mood) {
+  const y = -226;
+  if (m < 0.08) {
+    const curve = mood === 'smile' ? 10 : mood === 'frown' ? -9 : 2;
+    c.beginPath(); c.moveTo(-21, y); c.quadraticCurveTo(0, y + curve, 21, y);
+    c.lineWidth = 4; c.strokeStyle = OUT; c.lineCap = 'round'; c.stroke();
+    return;
+  }
+  const w = 22 + m * 12, h = 14 + m * 46;
+  shape(c, '#5c1717', c => {
+    c.moveTo(-w, y - 4); c.lineTo(w, y - 4);
+    c.bezierCurveTo(w, y - 4 + h * 1.25, -w, y - 4 + h * 1.25, -w, y - 4);
+  }, 4, false);
+  if (m > 0.45) shape(c, '#e0605e', ell(0, y - 4 + h * 0.78, w * 0.5, h * 0.18), 0, false);
+}
+
+function eyes(c, st) {
+  const ry = st.surprised ? 50 : 44;
+  const blink = st.blink || 0;
+  for (const s of [-1, 1]) {
+    const ex = s * 34, ey = -298;
+    if (blink > 0.5) {
+      c.beginPath(); c.moveTo(ex - 30, ey + 4); c.quadraticCurveTo(ex, ey + 14, ex + 30, ey + 4);
+      c.lineWidth = 4; c.strokeStyle = OUT; c.stroke();
+      continue;
+    }
+    shape(c, '#ffffff', ell(ex, ey, 36, ry), 3.5, false);
+    const lx = st.look[0] * 14, ly = st.look[1] * 14;
+    shape(c, OUT, ell(ex + lx, ey + ly, st.surprised ? 5 : 6.5, st.surprised ? 5 : 6.5), 0, false);
+  }
+  if (st.brows === 'angry') {
+    c.lineWidth = 6; c.strokeStyle = OUT; c.lineCap = 'round';
+    c.lineWidth = 8;
+    c.beginPath(); c.moveTo(-70, -340); c.lineTo(-8, -314); c.stroke();
+    c.beginPath(); c.moveTo(70, -340); c.lineTo(8, -314); c.stroke();
+  }
+}
+
+function headwear(c, k) {
+  if (k.head === 'beanie') {
+    shape(c, k.pom, ell(0, -418, 27, 25), 3.5);
+    c.save(); c.beginPath(); c.rect(-200, -500, 400, 160); c.clip();
+    shape(c, k.hat, ell(0, -285, 143, 125), 4);
+    c.restore();
+    shape(c, k.band, c => c.roundRect(-133, -364, 266, 28, 12), 4);
+  } else {
+    // tufos + cabelo com franja recortada
+    shape(c, k.hair, c => { c.moveTo(-30, -398); c.lineTo(-5, -440); c.lineTo(8, -400); c.lineTo(30, -432); c.lineTo(38, -396); c.closePath(); }, 3.5);
+    const th = Math.asin(35 / 123);
+    shape(c, k.hair, c => {
+      c.ellipse(0, -285, 141, 123, 0, Math.PI + th, TAU - th);
+      [[110, -347], [84, -322], [55, -352], [25, -326], [-5, -354], [-35, -327], [-66, -350], [-95, -323], [-118, -343]]
+        .forEach(([x, y]) => c.lineTo(x, y));
+      c.closePath();
+    }, 4);
+  }
+}
+
+function splat(c, p) {
+  // bola de neve esborrachada na cabeça
+  c.save(); c.translate(70, -360); c.scale(0.6 + 0.4 * p, 0.6 + 0.4 * p);
+  shape(c, '#ffffff', c => {
+    const pts = 14;
+    for (let i = 0; i <= pts; i++) {
+      const a = i / pts * TAU, r = (i % 2 ? 38 : 60) + (i % 3) * 6;
+      const x = Math.cos(a) * r, y = Math.sin(a) * r * 0.75;
+      i ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.closePath();
+  }, 3.5);
+  // pingos
+  shape(c, '#ffffff', c => { c.moveTo(-12, 30); c.lineTo(-4, 30); c.quadraticCurveTo(0, 30 + 40 * p, -8, 32 + 44 * p); c.quadraticCurveTo(-16, 30 + 40 * p, -12, 30); }, 3);
+  c.restore();
+}
+
+function drawKid(c, k, st) {
+  c.save();
+  c.translate(st.x, st.y + st.bob);
+  c.rotate(st.tilt);
+  // sombra no chão
+  c.fillStyle = 'rgba(40,60,90,0.18)';
+  c.beginPath(); c.ellipse(0, 4 - st.bob, 105, 16, 0, 0, TAU); c.fill();
+  // sapatos
+  shape(c, '#222', ell(-40, -8, 42, 15));
+  shape(c, '#222', ell(40, -8, 42, 15));
+  // calças
+  shape(c, k.pants, c => c.rect(-70, -48, 140, 36));
+  c.beginPath(); c.moveTo(0, -44); c.lineTo(0, -12); c.lineWidth = 3.5; c.strokeStyle = OUT; c.stroke();
+  // braços atrás do casaco
+  arm(c, k, -1, st.armL); arm(c, k, 1, st.armR);
+  // casaco
+  shape(c, k.jacket, c => {
+    c.moveTo(-64, -178); c.lineTo(64, -178);
+    c.quadraticCurveTo(82, -112, 86, -46); c.lineTo(-86, -46);
+    c.quadraticCurveTo(-82, -112, -64, -178); c.closePath();
+  });
+  shape(c, k.hem, c => c.roundRect(-88, -60, 176, 16, 6), 3.5);
+  c.beginPath(); c.moveTo(0, -165); c.lineTo(0, -62); c.lineWidth = 3.5; c.strokeStyle = OUT; c.stroke();
+  [-140, -110, -82].forEach(y => shape(c, OUT, ell(-14, y, 4, 4), 0, false));
+  if (k.scarf) {
+    shape(c, k.scarf, c => c.roundRect(-78, -184, 156, 30, 12), 3.5);
+    shape(c, k.scarf, c => { c.moveTo(34, -162); c.lineTo(62, -162); c.lineTo(66, -96); c.lineTo(38, -100); c.closePath(); }, 3.5);
+    c.lineWidth = 3; c.beginPath(); c.moveTo(42, -104); c.lineTo(42, -96); c.moveTo(52, -104); c.lineTo(52, -94); c.moveTo(62, -104); c.lineTo(62, -96); c.stroke();
+  }
+  // cabeça
+  shape(c, k.skin, ell(0, -285, 138, 118));
+  headwear(c, k);
+  eyes(c, st);
+  mouth(c, st.mouth, st.mood);
+  if (st.splat) splat(c, st.splat);
+  c.restore();
+}
+
+// ------------------------------- TIMELINE ----------------------------------
+const TALK_A = [0.25, 0.75, 0.4, 0.95, 0.1, 0.6, 0.85, 0.3, 0.7, 0.05, 0.9, 0.5];
+const TALK_B = [0.6, 0.95, 0.3, 0.8, 0.1, 0.7, 1.0, 0.4];
+const LAUGH = [1.0, 0.55, 1.0, 0.5];
+
+const HIT = 3.95, THROW = 3.55;
+const A_X = 760, B_X = 1170, GROUND = 905;
+
+function stateA(t) {
+  const q = onTwos(t);
+  const walk = clamp(q / 1.2, 0, 1);
+  const st = { x: lerp(-230, A_X, walk), y: GROUND, bob: 0, tilt: 0, look: [1, 0], mouth: 0, mood: 'smile', armL: 75, armR: 75, blink: 0 };
+  if (walk < 1) { st.bob = -Math.abs(Math.sin(q * Math.PI * 4.5)) * 22; st.tilt = Math.sin(q * Math.PI * 4.5) * 0.04; }
+  if (between(t, 1.4, 2.8)) {
+    st.mouth = TALK_A[Math.floor(q * 12) % TALK_A.length];
+    st.armR = -15 + Math.sin(q * 9) * 20; // gesticula
+    st.bob = -Math.abs(Math.sin(q * 6)) * 4;
+  }
+  if (between(t, 2.95, 3.05)) st.blink = 1;
+  if (between(t, 2.85, 3.55)) st.look = [1, -0.2];
+  if (between(t, 3.55, HIT)) st.look = [1, -0.6]; // vê a bola a chegar
+  if (t >= HIT + 0.08) {
+    // a rir
+    const lq = Math.floor((t - HIT) * 12);
+    st.mouth = LAUGH[lq % LAUGH.length];
+    st.bob = -Math.abs(Math.sin((q - HIT) * Math.PI * 7)) * 14;
+    st.tilt = -0.05;
+    st.armL = 112; st.armR = 112; // mãos na barriga
+    st.look = [0.9, 0.3];
+  }
+  return st;
+}
+
+function stateB(t) {
+  const q = onTwos(t);
+  const walk = clamp((q - 0.1) / 1.15, 0, 1);
+  const st = { x: lerp(2150, B_X, walk), y: GROUND, bob: 0, tilt: 0, look: [-1, 0], mouth: 0, mood: 'neutral', armL: 75, armR: 75, blink: 0 };
+  if (walk < 1 && walk > 0) { st.bob = -Math.abs(Math.sin(q * Math.PI * 4.5 + 1)) * 22; st.tilt = Math.sin(q * Math.PI * 4.5 + 1) * 0.04; }
+  if (between(t, 1.85, 1.95)) st.blink = 1;
+  if (between(t, 1.4, 2.8)) st.look = [-1, -0.1];
+  if (between(t, 2.85, 3.55)) {
+    st.surprised = true; st.mood = 'smile';
+    st.mouth = TALK_B[Math.floor(q * 12) % TALK_B.length];
+    st.armL = -40; st.armR = -40; // braços no ar
+    st.bob = -Math.abs(Math.sin(q * 10)) * 10;
+  }
+  if (t >= HIT) {
+    const d = t - HIT;
+    const shake = d < 0.35 ? Math.sin(d * 70) * (0.35 - d) * 0.3 : 0;
+    st.tilt = -0.07 * Math.exp(-d * 4) + shake;
+    st.x += 22 * Math.exp(-d * 5);
+    st.splat = clamp(d / 0.12, 0, 1);
+    st.look = [0.9, -0.1];
+    st.brows = 'angry'; st.mood = 'frown'; st.mouth = 0;
+    st.armL = 60; st.armR = 60;
+    if (d < 0.2) { st.blink = 1; st.armL = -20; st.armR = -20; }
+  }
+  return st;
+}
+
+function snowball(c, t) {
+  if (t < THROW) return;
+  if (t < HIT) {
+    const p = (t - THROW) / (HIT - THROW);
+    const x = lerp(2010, B_X + 70, p), y = lerp(430, GROUND - 360, p) - Math.sin(p * Math.PI) * 140;
+    c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 5; c.lineCap = 'round';
+    for (const o of [-12, 0, 12]) { c.beginPath(); c.moveTo(x + 40, y + o); c.lineTo(x + 95, y + o - 14); c.stroke(); }
+    shape(c, '#ffffff', ell(x, y, 24, 24), 4);
+    return;
+  }
+  // pedaços de neve a voar
+  const d = t - HIT;
+  if (d > 0.7) return;
+  const r = rng(11);
+  for (let i = 0; i < 14; i++) {
+    const a = -Math.PI * (0.05 + r() * 0.9), sp = 260 + r() * 380;
+    const x = B_X + 70 + Math.cos(a) * sp * d;
+    const y = GROUND - 360 + Math.sin(a) * sp * d + 900 * d * d;
+    shape(c, '#ffffff', ell(x, y, 6 + r() * 8, 5 + r() * 7), 2.5, false);
+  }
+}
+
+function caption(c, t) {
+  let text = null;
+  if (between(t, 1.4, 2.85)) text = 'Ei! Cancelaram as aulas por causa da neve!';
+  else if (between(t, 2.85, 3.6)) text = 'A sério?! Brutal!';
+  else if (t >= HIT + 0.08) text = 'HA HA HA HA!';
+  if (!text) return;
+  c.font = '800 54px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.letterSpacing = '1px'; c.wordSpacing = '12px';
+  c.lineJoin = 'round'; c.lineWidth = 9; c.strokeStyle = '#000'; c.strokeText(text, W / 2, 1035);
+  c.fillStyle = '#fff'; c.fillText(text, W / 2, 1035);
+}
+
+function renderFrame(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(bg, 0, 0);
+  snow(ctx, t, false);
+  const a = stateA(t), b = stateB(t);
+  drawKid(ctx, KID_A, a);
+  drawKid(ctx, KID_B, b);
+  snowball(ctx, t);
+  snow(ctx, t, true);
+  // textura de papel
+  ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 0.16;
+  ctx.drawImage(paper, 0, 0); ctx.restore();
+  caption(ctx, t);
+}
+
+buildBackground();
+buildPaper();
+window.renderFrame = renderFrame;
+window.ready = true;
+
+if (!location.search.includes('render')) {
+  const t0 = performance.now();
+  (function loop(now) {
+    renderFrame(((now - t0) / 1000) % DURATION);
+    requestAnimationFrame(loop);
+  })(t0);
+}
+</script>
+</body>
+</html>
