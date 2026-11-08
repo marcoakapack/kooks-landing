@@ -14,17 +14,23 @@
 <canvas id="c" width="1920" height="1080"></canvas>
 <script>
 // ---------------------------------------------------------------------------
-// Animação de 5 s em estilo "cutout" de papel (cabeças grandes, olhos colados,
-// corpos em trapézio, andar aos saltinhos, cenário de montanha com neve).
-// Tudo desenhado com código — sem imagens.  renderFrame(t) desenha o instante t.
+// Animação de 5 s em estilo "cutout" de papel, feita só com código.
+//
+// Regras do estilo (da pesquisa sobre a produção da série):
+//  * 24 fps, personagens e adereços mudam de pose a cada 2 frames ("on twos"),
+//    sem easing: cada mudança é uma troca seca de pose. Só a câmara é suave.
+//  * Fantoches rígidos de peças planas: rodam em pivots, trocam de desenho,
+//    nunca deformam. Pequena sombra entre camadas ("no-platen shadow").
+//  * Pestanejar antes de falar; a cabeça vira antes do corpo.
+//  * Quem ouve fica completamente parado (só pestaneja).
+//  * Cenário sem contornos e sem sombras; textura de papel dentro de cada forma.
 // ---------------------------------------------------------------------------
-const W = 1920, H = 1080, DURATION = 5;
+const W = 1920, H = 1080, FPS = 24, DURATION = 5;
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
-const OUT = '#141414';
+const OUT = '#1b1715';
 const TAU = Math.PI * 2;
 
-// RNG determinístico (cada render sai igual)
 function rng(seed) {
   return function () {
     seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -33,417 +39,475 @@ function rng(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
-
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, p) => a + (b - a) * p;
 const between = (t, a, b) => t >= a && t < b;
-// "animar a 2s": as personagens mexem-se a 12 fps, como em animação de recortes
-const onTwos = t => Math.floor(t * 12) / 12;
+const POSE = 2 / FPS;                                  // uma pose = 2 frames
+const twos = t => Math.floor(t / POSE + 1e-6) * POSE;  // tempo quantizado
+const poseIdx = (t, start) => Math.floor((t - start) / POSE + 1e-6);
 
-// Desenha uma forma com sombra de papel recortado na fill e contorno preto
-function shape(c, fill, build, lw = 4, shadow = true) {
+// ------------------------------ TEXTURA DE PAPEL ---------------------------
+// Tile 512x512 sem costuras: grão fino + manchas suaves + fibras. Aplica-se
+// em "multiply" dentro de cada forma, por isso "cola" a cada peça de papel.
+const TEX = (() => {
+  const S = 512, cnv = document.createElement('canvas'); cnv.width = cnv.height = S;
+  const c = cnv.getContext('2d'), r = rng(42);
+  // manchas de baixa frequência (periódicas)
+  const small = document.createElement('canvas'); small.width = small.height = 16;
+  const sc = small.getContext('2d'), sd = sc.createImageData(16, 16);
+  for (let i = 0; i < sd.data.length; i += 4) { const v = 238 + r() * 17; sd.data[i] = sd.data[i + 1] = sd.data[i + 2] = v; sd.data[i + 3] = 255; }
+  sc.putImageData(sd, 0, 0);
+  const big = document.createElement('canvas'); big.width = big.height = 48;
+  const bc = big.getContext('2d');
+  for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) bc.drawImage(small, x * 16, y * 16);
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(big, 16, 16, 16, 16, 0, 0, S, S);
+  // grão
+  const img = c.getImageData(0, 0, S, S), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (r() - 0.5) * 16; d[i] += n; d[i + 1] += n; d[i + 2] += n * 1.1; }
+  c.putImageData(img, 0, 0);
+  // fibras (desenhadas com wrap para não haver costura)
+  c.lineWidth = 1;
+  for (let i = 0; i < 240; i++) {
+    const x = r() * S, y = r() * S, a = r() * TAU, l = 5 + r() * 16;
+    c.strokeStyle = r() < 0.5 ? 'rgba(150,140,125,0.13)' : 'rgba(255,255,255,0.25)';
+    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
+      c.beginPath(); c.moveTo(x + ox, y + oy); c.lineTo(x + ox + Math.cos(a) * l, y + oy + Math.sin(a) * l); c.stroke();
+    }
+  }
+  return ctx.createPattern(cnv, 'repeat');
+})();
+function hash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) % 512; }
+
+let CAM_S = 1; // escala da câmara (para a sombra entre camadas acompanhar)
+
+// Peça de papel: cor lisa + textura + (opcional) sombra de camada + contorno
+function piece(c, fill, build, opt = {}) {
+  const lw = opt.lw ?? 3, shadow = opt.shadow ?? true, tex = opt.tex ?? true;
   c.beginPath(); build(c);
   if (fill) {
     if (shadow) {
-      c.shadowColor = 'rgba(0,0,0,0.22)';
-      c.shadowOffsetX = 3; c.shadowOffsetY = 3; c.shadowBlur = 4;
+      c.shadowColor = 'rgba(20,10,0,0.30)';
+      c.shadowOffsetX = 2 * CAM_S; c.shadowOffsetY = 2 * CAM_S; c.shadowBlur = 1.5 * CAM_S;
     }
     c.fillStyle = fill; c.fill();
-    c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
+    c.shadowColor = 'transparent'; c.shadowBlur = c.shadowOffsetX = c.shadowOffsetY = 0;
+    if (tex) {
+      c.save(); c.globalCompositeOperation = 'multiply';
+      const o = hash(fill);
+      TEX.setTransform(new DOMMatrix().translate(o, o * 1.7 % 512));
+      c.fillStyle = TEX; c.fill(); c.restore();
+    }
   }
   if (lw) { c.lineWidth = lw; c.strokeStyle = OUT; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke(); }
 }
+// cenário: sem contorno, sem sombra
+const flat = (c, fill, build) => piece(c, fill, build, { lw: 0, shadow: false });
 const ell = (x, y, rx, ry, r = 0) => c => c.ellipse(x, y, rx, ry, r, 0, TAU);
+const poly = pts => c => { pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); };
 
-// ------------------------------- CENÁRIO -----------------------------------
-const bg = document.createElement('canvas');
-bg.width = W; bg.height = H;
+// --------------------------------- CENÁRIO ---------------------------------
+// Três planos para parallax: longe (céu, montanhas), meio (colinas, árvores,
+// casas), perto (estrada, chão, placa).
+const mk = () => { const k = document.createElement('canvas'); k.width = W; k.height = H; return k; };
+const FAR = mk(), MID = mk(), NEAR = mk();
 
 function cloud(c, x, y, s) {
   c.save(); c.translate(x, y); c.scale(s, s);
-  c.fillStyle = '#ffffff';
-  c.shadowColor = 'rgba(0,0,0,0.10)'; c.shadowOffsetY = 4; c.shadowBlur = 4;
-  c.beginPath();
-  [[0, 0, 60], [55, -25, 55], [110, 0, 50], [55, 15, 50], [-45, 10, 40], [150, 15, 35]]
-    .forEach(([cx, cy, r]) => { c.moveTo(cx + r, cy); c.arc(cx, cy, r, 0, TAU); });
-  c.fill();
+  flat(c, '#fbfcfe', c => {
+    [[0, 0, 46], [52, -22, 54], [108, -6, 44], [150, 8, 30], [-40, 10, 30]].forEach(([cx, cy, r]) => { c.moveTo(cx + r, cy); c.arc(cx, cy, r, 0, TAU); });
+    c.roundRect(-62, 0, 238, 40, 20);
+  });
   c.restore();
 }
 
-function tree(c, x, y, s) {
+function range(c, pts, color, cap, capBelow, seed) {
+  flat(c, color, poly(pts));
+  const r = rng(seed);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [px, py] = pts[i], L = pts[i - 1], R = pts[i + 1];
+    if (!(py < L[1] && py < R[1]) || py > capBelow) continue;
+    const f = 0.32 + r() * 0.12;
+    const lx = lerp(px, L[0], f), ly = lerp(py, L[1], f);
+    const rx = lerp(px, R[0], f * (0.8 + r() * 0.4)), ry = lerp(py, R[1], f * (0.8 + r() * 0.4));
+    const edge = [];
+    const n = 4 + Math.floor(r() * 3);
+    for (let k = 1; k < n; k++) edge.push([lerp(rx, lx, k / n) + (r() - 0.5) * 10, lerp(ry, ly, k / n) + (k % 2 ? -14 - r() * 22 : r() * 10)]);
+    flat(c, cap, poly([[px, py], [rx, ry], ...edge, [lx, ly]]));
+  }
+}
+
+function pine(c, x, y, s, col) {
   c.save(); c.translate(x, y); c.scale(s, s);
-  shape(c, '#6b4428', c => c.rect(-12, -40, 24, 42), 3);
-  const g = '#2f6b3f';
-  shape(c, g, c => { c.moveTo(-80, -30); c.lineTo(80, -30); c.lineTo(0, -150); c.closePath(); }, 3);
-  shape(c, g, c => { c.moveTo(-65, -100); c.lineTo(65, -100); c.lineTo(0, -210); c.closePath(); }, 3);
-  shape(c, g, c => { c.moveTo(-48, -165); c.lineTo(48, -165); c.lineTo(0, -260); c.closePath(); }, 3);
-  // neve nas pontas
-  shape(c, '#ffffff', c => { c.moveTo(-19, -222); c.lineTo(0, -260); c.lineTo(19, -222); c.lineTo(9, -230); c.lineTo(0, -220); c.lineTo(-9, -230); c.closePath(); }, 3, false);
+  flat(c, '#5d3f27', c => c.rect(-9, -36, 18, 38));
+  const L = [[-88, -28], [-46, -78], [-70, -80], [-34, -132], [-54, -134], [-22, -182], [-36, -185], [0, -262]];
+  const Rt = L.slice(0, -1).reverse().map(([px, py], i) => [-px + (i % 2 ? 4 : -3), py + (i % 2 ? -3 : 2)]);
+  flat(c, col, poly([...L, ...Rt]));
+  // neve pousada nas pontas dos ramos
+  [[-88, -28, 22], [-70, -80, 18], [-54, -134, 14], [-36, -185, 11]].forEach(([px, py, w]) =>
+    flat(c, '#f3f7fb', poly([[px - 2, py + 1], [px + w, py - 8], [px + w * 1.6, py - 4], [px + w * 0.6, py + 2]])));
+  flat(c, '#f3f7fb', poly([[0, -262], [12, -236], [2, -240], [-10, -232]]));
   c.restore();
 }
 
 function house(c, x, y, s, wall, roof) {
   c.save(); c.translate(x, y); c.scale(s, s);
-  shape(c, wall, c => c.rect(-90, -110, 180, 110));
-  shape(c, roof, c => { c.moveTo(-115, -105); c.lineTo(0, -195); c.lineTo(115, -105); c.closePath(); });
-  shape(c, '#ffffff', c => { c.moveTo(-115, -105); c.lineTo(0, -195); c.lineTo(115, -105); c.lineTo(95, -112); c.lineTo(70, -118); c.lineTo(40, -128); c.lineTo(0, -160); c.lineTo(-40, -128); c.lineTo(-70, -118); c.lineTo(-95, -112); c.closePath(); }, 3, false);
-  shape(c, '#ffe27a', c => c.rect(-62, -80, 40, 36), 3);
-  shape(c, '#ffe27a', c => c.rect(22, -80, 40, 36), 3);
-  shape(c, '#6b4428', c => c.rect(-18, -60, 36, 60), 3);
-  shape(c, '#7a7a7a', c => c.rect(45, -205, 26, 55), 3);
+  flat(c, '#6a6a6a', c => c.rect(48, -205, 26, 60));
+  flat(c, wall, c => c.rect(-90, -112, 180, 112));
+  flat(c, roof, poly([[-116, -104], [0, -196], [116, -104]]));
+  flat(c, '#f3f7fb', poly([[-118, -104], [0, -198], [118, -104], [92, -112], [64, -110], [36, -126], [0, -150], [-30, -128], [-66, -116], [-96, -114]]));
+  flat(c, '#3b2f2a', c => { c.rect(-64, -82, 42, 38); c.rect(22, -82, 42, 38); });
+  flat(c, '#f2d36b', c => { c.rect(-60, -78, 34, 30); c.rect(26, -78, 34, 30); });
+  flat(c, '#4f3423', c => c.rect(-17, -62, 34, 62));
+  flat(c, '#f3f7fb', c => c.roundRect(-104, -8, 208, 14, 7));
   c.restore();
 }
 
 function buildBackground() {
-  const c = bg.getContext('2d');
-  // céu
-  c.fillStyle = '#86c5ec'; c.fillRect(0, 0, W, H);
-  cloud(c, 260, 150, 1.1); cloud(c, 1050, 110, 0.85); cloud(c, 1600, 200, 1.0);
+  // ---- longe
+  let c = FAR.getContext('2d');
+  flat(c, '#79b5e4', c => c.rect(0, 0, W, H));
+  cloud(c, 290, 140, 1.0); cloud(c, 1010, 92, 0.75); cloud(c, 1610, 175, 0.9);
+  range(c, [[-60, 700], [-60, 330], [60, 330], [150, 380], [240, 245], [330, 340], [420, 300], [560, 420], [700, 228], [790, 292], [880, 262], [1010, 400], [1150, 280], [1230, 330], [1335, 206], [1460, 360], [1570, 300], [1700, 392], [1820, 248], [1990, 330], [1990, 700]],
+    '#a1b1c9', '#eef3f8', 330, 5);
+  range(c, [[-60, 720], [-60, 470], [0, 468], [130, 386], [200, 430], [330, 356], [470, 480], [600, 418], [720, 500], [860, 376], [940, 420], [1060, 348], [1200, 470], [1300, 440], [1420, 386], [1520, 460], [1640, 366], [1760, 440], [1900, 398], [1990, 450], [1990, 720]],
+    '#8092b0', '#f1f5f9', 400, 9);
 
-  // montanhas
-  const peaks = [[-60, 820], [180, 330], [390, 480], [620, 250], [850, 460], [1060, 300], [1290, 490], [1500, 270], [1720, 440], [1990, 330], [1990, 820]];
-  shape(c, '#71879f', c => { c.moveTo(-60, 820); peaks.forEach(p => c.lineTo(p[0], p[1])); c.lineTo(1990, 820); c.closePath(); });
-  const r = rng(7);
-  for (let i = 1; i < peaks.length - 1; i++) {
-    const [px, py] = peaks[i];
-    if (py > 400) continue; // só os picos altos têm neve
-    const L = peaks[i - 1], R = peaks[i + 1], f = 0.36;
-    const lx = lerp(px, L[0], f), ly = lerp(py, L[1], f);
-    const rx = lerp(px, R[0], f), ry = lerp(py, R[1], f);
-    shape(c, '#ffffff', c => {
-      c.moveTo(px, py); c.lineTo(rx, ry);
-      const n = 5;
-      for (let k = 1; k < n; k++) {
-        const x = lerp(rx, lx, k / n), y = lerp(ry, ly, k / n) + (k % 2 ? -26 - r() * 12 : 6);
-        c.lineTo(x, y);
-      }
-      c.lineTo(lx, ly); c.closePath();
-    }, 3, false);
-  }
+  // ---- meio
+  c = MID.getContext('2d');
+  flat(c, '#e2eaf3', c => { c.moveTo(-60, 600); c.quadraticCurveTo(300, 520, 700, 572); c.quadraticCurveTo(1100, 626, 1500, 556); c.quadraticCurveTo(1800, 518, 1990, 572); c.lineTo(1990, H + 60); c.lineTo(-60, H + 60); c.closePath(); });
+  house(c, 330, 608, 0.55, '#5e86ad', '#3b3d52');
+  [[60, 600, 0.62, '#3c6a49'], [610, 586, 0.5, '#3c6a49'], [1290, 600, 0.5, '#3c6a49'], [1850, 585, 0.6, '#3c6a49']].forEach(a => pine(c, ...a));
+  flat(c, '#ebf1f7', c => { c.moveTo(-60, 640); c.quadraticCurveTo(400, 584, 900, 622); c.quadraticCurveTo(1400, 660, 1990, 606); c.lineTo(1990, H + 60); c.lineTo(-60, H + 60); c.closePath(); });
+  house(c, 1530, 622, 0.62, '#b4523b', '#563628');
+  [[150, 640, 0.8, '#2d5b39'], [230, 632, 0.62, '#2d5b39'], [540, 628, 0.72, '#2d5b39'], [1370, 640, 0.78, '#2d5b39'], [1745, 628, 0.85, '#2d5b39']].forEach(a => pine(c, ...a));
 
-  // colinas de neve
-  shape(c, '#e6eef5', c => {
-    c.moveTo(-50, 720); c.quadraticCurveTo(300, 590, 700, 680); c.quadraticCurveTo(1100, 770, 1500, 650);
-    c.quadraticCurveTo(1800, 590, 1970, 680); c.lineTo(1970, 1100); c.lineTo(-50, 1100); c.closePath();
-  });
-
-  // vila ao fundo
-  house(c, 1560, 690, 0.75, '#b9563d', '#5b3a2c');
-  house(c, 300, 690, 0.6, '#5f8fb8', '#3d3d55');
-
-  // pinheiros
-  [[90, 730, 0.95], [190, 710, 0.7], [520, 690, 0.65], [610, 705, 0.85], [1330, 700, 0.7],
-   [1420, 715, 0.9], [1760, 690, 0.75], [1860, 720, 1.0]].forEach(([x, y, s]) => tree(c, x, y, s));
-
-  // estrada
-  shape(c, '#8e949b', c => c.rect(-10, 755, W + 20, 75));
-  c.fillStyle = '#f2c94c';
-  for (let x = 20; x < W; x += 140) { c.beginPath(); c.rect(x, 787, 70, 10); c.fill(); }
-
-  // chão de neve à frente
-  shape(c, '#f4f7fa', c => {
-    c.moveTo(-20, 840); c.quadraticCurveTo(500, 822, 960, 838); c.quadraticCurveTo(1450, 852, 1940, 830);
-    c.lineTo(1940, 1100); c.lineTo(-20, 1100); c.closePath();
-  });
-  // montinhos de neve
-  [[1700, 960, 150, 40], [140, 990, 180, 45]].forEach(([x, y, rx, ry]) =>
-    shape(c, '#ffffff', c => c.ellipse(x, y, rx, ry, 0, Math.PI, TAU), 3));
-
-  // placa de paragem
-  shape(c, '#9aa3ab', c => c.rect(1525, 560, 16, 340));
-  shape(c, '#ffffff', c => c.rect(1453, 520, 160, 104));
-  c.strokeStyle = '#c0392b'; c.lineWidth = 8; c.strokeRect(1465, 532, 136, 80);
-  c.fillStyle = '#c0392b'; c.font = '900 44px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText('BUS', 1533, 573);
-  shape(c, '#555', c => c.ellipse(1533, 902, 40, 10, 0, 0, TAU), 3, false);
+  // ---- perto
+  c = NEAR.getContext('2d');
+  flat(c, '#c8d5e2', c => c.rect(-60, 612, W + 120, 10));
+  flat(c, '#6d6e74', c => c.rect(-60, 620, W + 120, 64));
+  c.save(); for (let x = -40; x < W + 60; x += 150) flat(c, '#e6c34a', c => c.rect(x, 648, 74, 8)); c.restore();
+  flat(c, '#c8d5e2', c => { c.moveTo(-60, 688); c.quadraticCurveTo(600, 676, 1100, 690); c.quadraticCurveTo(1500, 700, 1990, 684); c.lineTo(1990, H + 200); c.lineTo(-60, H + 200); c.closePath(); });
+  flat(c, '#eef3f8', c => { c.moveTo(-60, 696); c.quadraticCurveTo(600, 684, 1100, 698); c.quadraticCurveTo(1500, 708, 1990, 692); c.lineTo(1990, H + 200); c.lineTo(-60, H + 200); c.closePath(); });
+  // montes de neve à frente
+  flat(c, '#d6e1ec', ell(1760, 1050, 230, 70)); flat(c, '#f6f9fc', ell(1760, 1040, 222, 62));
+  flat(c, '#d6e1ec', ell(90, 1075, 260, 66)); flat(c, '#f6f9fc', ell(90, 1066, 250, 58));
+  // placa da paragem (adereço junto às personagens: leva contorno)
+  c.save(); c.filter = 'blur(3px)'; c.fillStyle = 'rgba(70,90,120,0.22)'; c.beginPath(); c.ellipse(1580, 930, 46, 10, 0, 0, TAU); c.fill(); c.restore();
+  piece(c, '#8f979e', c => c.rect(1572, 560, 16, 370));
+  piece(c, '#fbfbf8', c => c.rect(1500, 500, 160, 108));
+  piece(c, null, c => c.rect(1512, 512, 136, 84), { lw: 7 });
+  c.strokeStyle = '#c23a2c'; c.lineWidth = 6; c.strokeRect(1512, 512, 136, 84);
+  c.fillStyle = '#c23a2c'; c.font = '900 46px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('BUS', 1580, 555);
 }
 
-// textura de papel por cima de tudo
-const paper = document.createElement('canvas');
-function buildPaper() {
-  paper.width = W; paper.height = H;
-  const c = paper.getContext('2d');
-  const img = c.createImageData(W, H), d = img.data, r = rng(42);
-  for (let i = 0; i < d.length; i += 4) {
-    const v = 200 + r() * 55;
-    d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
-  }
-  c.putImageData(img, 0, 0);
-  // fibras
-  c.strokeStyle = 'rgba(120,110,95,0.35)'; c.lineWidth = 1;
-  for (let i = 0; i < 1400; i++) {
-    const x = r() * W, y = r() * H, a = r() * TAU, l = 4 + r() * 14;
-    c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
-  }
-}
-
-// neve a cair
-const flakes = (() => { const r = rng(3); return Array.from({ length: 110 }, () => ({ x: r() * W, y: r() * H, s: 3 + r() * 5, v: 60 + r() * 70, w: r() * TAU, front: r() < 0.35 })); })();
+// neve a cair: 3 profundidades, em espaço de ecrã, também "on twos"
+const FLAKES = (() => {
+  const r = rng(3), L = [[38, 2.2, 34, 0.75], [26, 3.6, 58, 0.9], [12, 6, 96, 1]];
+  const out = [];
+  L.forEach(([n, s, v, a], layer) => { for (let i = 0; i < n; i++) out.push({ x: r() * W, y: r() * H, s: s * (0.8 + r() * 0.4), v, a, w: r() * TAU, front: layer === 2 }); });
+  return out;
+})();
 function snow(c, t, front) {
-  c.fillStyle = '#ffffff';
-  for (const f of flakes) {
+  const q = twos(t);
+  for (const f of FLAKES) {
     if (f.front !== front) continue;
-    const y = (f.y + f.v * t) % (H + 20) - 10;
-    const x = f.x + Math.sin(t * 1.5 + f.w) * 18;
+    c.globalAlpha = f.a; c.fillStyle = '#f5f8fb';
+    const y = ((f.y + f.v * q) % (H + 20)) - 10, x = f.x + Math.sin(q * 1.2 + f.w) * 14;
     c.beginPath(); c.arc(x, y, f.s, 0, TAU); c.fill();
   }
+  c.globalAlpha = 1;
 }
 
-// ----------------------------- PERSONAGENS ---------------------------------
-const KID_A = {
-  skin: '#fde0bd', jacket: '#25a196', hem: '#1b7d74', pants: '#3a4a8d', mitten: '#f4c430',
-  head: 'beanie', hat: '#7c3fa3', band: '#5d2c7d', pom: '#f4c430',
-};
-const KID_B = {
-  skin: '#fde0bd', jacket: '#e2a12b', hem: '#b97e17', pants: '#5a4636', mitten: '#d6392f',
-  head: 'hair', hair: '#5b391c', scarf: '#d6392f',
-};
+// ------------------------------- PERSONAGENS -------------------------------
+const KID_A = { skin: '#fcdcb6', jacket: '#24a093', hem: '#1a7c72', pants: '#3a4a8c', mitten: '#f2c22e',
+  head: 'beanie', hat: '#7b3fa2', band: '#5c2b7c', pom: '#f2c22e' };
+const KID_B = { skin: '#fcdcb6', jacket: '#e09f2a', hem: '#b77c16', pants: '#5a4535', mitten: '#d4382e',
+  head: 'hair', hair: '#5a381b', scarf: '#d4382e' };
 
-function arm(c, k, side, angleDeg) {
-  const sx = side * 66, sy = -138, len = 72;
-  const a = angleDeg * Math.PI / 180;
+function arm(c, k, side, deg) {
+  const sx = side * 64, sy = -140, len = 70, a = deg * Math.PI / 180;
   const hx = sx + Math.cos(a) * len * side, hy = sy + Math.sin(a) * len;
-  c.lineCap = 'round';
-  c.strokeStyle = OUT; c.lineWidth = 42;
+  c.save();
+  c.shadowColor = 'rgba(20,10,0,0.30)'; c.shadowOffsetX = c.shadowOffsetY = 2 * CAM_S; c.shadowBlur = 1.5 * CAM_S;
+  c.lineCap = 'round'; c.strokeStyle = OUT; c.lineWidth = 38;
   c.beginPath(); c.moveTo(sx, sy); c.lineTo(hx, hy); c.stroke();
-  c.strokeStyle = k.jacket; c.lineWidth = 34;
+  c.restore();
+  c.lineCap = 'round'; c.strokeStyle = k.jacket; c.lineWidth = 32;
   c.beginPath(); c.moveTo(sx, sy); c.lineTo(hx, hy); c.stroke();
-  // luva
-  shape(c, k.mitten, ell(hx + side * 4, hy - 14, 9, 11, -0.4 * side), 3);
-  shape(c, k.mitten, ell(hx, hy, 20, 19), 3);
+  piece(c, k.mitten, ell(hx + side * 3, hy - 13, 8, 10, -0.4 * side));
+  piece(c, k.mitten, ell(hx, hy, 19, 18));
 }
 
-function mouth(c, m, mood) {
-  const y = -226;
-  if (m < 0.08) {
-    const curve = mood === 'smile' ? 10 : mood === 'frown' ? -9 : 2;
-    c.beginPath(); c.moveTo(-21, y); c.quadraticCurveTo(0, y + curve, 21, y);
-    c.lineWidth = 4; c.strokeStyle = OUT; c.lineCap = 'round'; c.stroke();
-    return;
+// Conjunto fixo de bocas (troca de peça, nunca deformação)
+function mouth(c, shape, mx, mood) {
+  const y = -224, dark = '#4a1513';
+  const open = (w, d, teeth, tongue) => {
+    const path = c => { c.moveTo(mx - w, y); c.lineTo(mx + w, y); c.bezierCurveTo(mx + w, y + d * 1.3, mx - w, y + d * 1.3, mx - w, y); c.closePath(); };
+    piece(c, dark, path, { shadow: false, tex: false, lw: 0 });
+    c.save(); c.beginPath(); path(c); c.clip();
+    if (teeth) { c.fillStyle = '#fbf8f0'; c.fillRect(mx - w, y, w * 2, teeth); }
+    if (tongue) { c.fillStyle = '#d95a58'; c.beginPath(); c.ellipse(mx + w * 0.15, y + d, w * 0.55, d * 0.35, 0, 0, TAU); c.fill(); }
+    c.restore();
+    piece(c, null, path, { lw: 3 });
+  };
+  switch (shape) {
+    case 'small': piece(c, dark, ell(mx, y + 4, 13, 8), { shadow: false, tex: false }); break;
+    case 'oo': piece(c, dark, ell(mx, y + 6, 12, 15), { shadow: false, tex: false }); break;
+    case 'mid': open(24, 22, 6, false); break;
+    case 'ee': open(30, 14, 8, false); break;
+    case 'wide': open(32, 40, 8, true); break;
+    default: {
+      const curve = mood === 'smile' ? 10 : mood === 'frown' ? -9 : 1;
+      c.beginPath(); c.moveTo(mx - 19, y); c.quadraticCurveTo(mx, y + curve, mx + 19, y);
+      c.lineWidth = 3.5; c.strokeStyle = OUT; c.lineCap = 'round'; c.stroke();
+    }
   }
-  const w = 22 + m * 12, h = 14 + m * 46;
-  shape(c, '#5c1717', c => {
-    c.moveTo(-w, y - 4); c.lineTo(w, y - 4);
-    c.bezierCurveTo(w, y - 4 + h * 1.25, -w, y - 4 + h * 1.25, -w, y - 4);
-  }, 4, false);
-  if (m > 0.45) shape(c, '#e0605e', ell(0, y - 4 + h * 0.78, w * 0.5, h * 0.18), 0, false);
 }
 
-function eyes(c, st) {
-  const ry = st.surprised ? 50 : 44;
-  const blink = st.blink || 0;
+function eyes(c, k, st, fx) {
+  const e = st.eyes;
   for (const s of [-1, 1]) {
-    const ex = s * 34, ey = -298;
-    if (blink > 0.5) {
-      c.beginPath(); c.moveTo(ex - 30, ey + 4); c.quadraticCurveTo(ex, ey + 14, ex + 30, ey + 4);
-      c.lineWidth = 4; c.strokeStyle = OUT; c.stroke();
+    const ex = fx + s * 33, ey = -298, rx = 36, ry = e.surprised ? 48 : 44;
+    if (e.state === 'squeeze') {           // olhos fechados com força: > <
+      c.lineWidth = 5; c.strokeStyle = OUT; c.lineCap = 'round'; c.lineJoin = 'round';
+      c.beginPath(); c.moveTo(ex + s * 20, ey - 15); c.lineTo(ex - s * 14, ey); c.lineTo(ex + s * 20, ey + 15); c.stroke();
       continue;
     }
-    shape(c, '#ffffff', ell(ex, ey, 36, ry), 3.5, false);
-    const lx = st.look[0] * 14, ly = st.look[1] * 14;
-    shape(c, OUT, ell(ex + lx, ey + ly, st.surprised ? 5 : 6.5, st.surprised ? 5 : 6.5), 0, false);
-  }
-  if (st.brows === 'angry') {
-    c.lineWidth = 6; c.strokeStyle = OUT; c.lineCap = 'round';
-    c.lineWidth = 8;
-    c.beginPath(); c.moveTo(-70, -340); c.lineTo(-8, -314); c.stroke();
-    c.beginPath(); c.moveTo(70, -340); c.lineTo(8, -314); c.stroke();
+    if (e.state === 'closed') {            // pálpebra cor de pele por cima do olho
+      piece(c, k.skin, ell(ex, ey, rx, ry), { shadow: false });
+      c.beginPath(); c.moveTo(ex - 26, ey + 10); c.quadraticCurveTo(ex, ey + 20, ex + 26, ey + 10);
+      c.lineWidth = 3; c.strokeStyle = OUT; c.stroke();
+      continue;
+    }
+    piece(c, '#ffffff', ell(ex, ey, rx, ry), { shadow: false, lw: 0 });
+    const pr = e.surprised ? 4.5 : 6.2;
+    c.fillStyle = OUT; c.beginPath(); c.arc(ex + e.look[0] * 15, ey + e.look[1] * 16, pr, 0, TAU); c.fill();
+    if (e.angry) {                          // pálpebra zangada corta o topo do olho
+      const outer = ex + s * rx, inner = ex - s * rx;
+      c.save(); c.beginPath(); c.ellipse(ex, ey, rx, ry, 0, 0, TAU); c.clip();
+      c.fillStyle = k.skin; c.beginPath(); c.moveTo(outer, ey - 60); c.lineTo(inner, ey - 60); c.lineTo(inner, ey - 8); c.lineTo(outer, ey - 34); c.closePath(); c.fill();
+      c.restore();
+    }
+    piece(c, null, ell(ex, ey, rx, ry), { lw: 3 });
+    if (e.angry) {
+      c.lineWidth = 6; c.strokeStyle = OUT; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(ex + s * (rx + 4), ey - 38); c.lineTo(ex - s * (rx - 6), ey - 10); c.stroke();
+    }
   }
 }
 
-function headwear(c, k) {
+function headwear(c, k, hf) {
   if (k.head === 'beanie') {
-    shape(c, k.pom, ell(0, -418, 27, 25), 3.5);
-    c.save(); c.beginPath(); c.rect(-200, -500, 400, 160); c.clip();
-    shape(c, k.hat, ell(0, -285, 143, 125), 4);
+    piece(c, k.pom, ell(hf * 10, -420, 26, 24));
+    c.save(); c.beginPath(); c.rect(-200, -500, 400, 162); c.clip();
+    piece(c, k.hat, ell(0, -285, 142, 124));
     c.restore();
-    shape(c, k.band, c => c.roundRect(-133, -364, 266, 28, 12), 4);
+    piece(c, k.band, c => c.roundRect(-132, -364, 264, 28, 12));
   } else {
-    // tufos + cabelo com franja recortada
-    shape(c, k.hair, c => { c.moveTo(-30, -398); c.lineTo(-5, -440); c.lineTo(8, -400); c.lineTo(30, -432); c.lineTo(38, -396); c.closePath(); }, 3.5);
+    const o = hf * 16;
+    piece(c, k.hair, poly([[o - 30, -396], [o - 8, -440], [o + 8, -402], [o + 32, -432], [o + 40, -394]]));
     const th = Math.asin(35 / 123);
-    shape(c, k.hair, c => {
+    piece(c, k.hair, c => {
       c.ellipse(0, -285, 141, 123, 0, Math.PI + th, TAU - th);
       [[110, -347], [84, -322], [55, -352], [25, -326], [-5, -354], [-35, -327], [-66, -350], [-95, -323], [-118, -343]]
-        .forEach(([x, y]) => c.lineTo(x, y));
+        .forEach(([x, y]) => c.lineTo(x + o * 0.4, y));
       c.closePath();
-    }, 4);
+    });
   }
 }
 
-function splat(c, p) {
-  // bola de neve esborrachada na cabeça
-  c.save(); c.translate(70, -360); c.scale(0.6 + 0.4 * p, 0.6 + 0.4 * p);
-  shape(c, '#ffffff', c => {
-    const pts = 14;
-    for (let i = 0; i <= pts; i++) {
-      const a = i / pts * TAU, r = (i % 2 ? 38 : 60) + (i % 3) * 6;
-      const x = Math.cos(a) * r, y = Math.sin(a) * r * 0.75;
-      i ? c.lineTo(x, y) : c.moveTo(x, y);
-    }
-    c.closePath();
-  }, 3.5);
-  // pingos
-  shape(c, '#ffffff', c => { c.moveTo(-12, 30); c.lineTo(-4, 30); c.quadraticCurveTo(0, 30 + 40 * p, -8, 32 + 44 * p); c.quadraticCurveTo(-16, 30 + 40 * p, -12, 30); }, 3);
-  c.restore();
+function splat(c) {                        // neve colada na cabeça
+  piece(c, '#f7fafc', poly([[18, -400], [44, -428], [70, -414], [96, -432], [118, -404], [134, -380], [112, -356], [118, -330], [96, -340], [90, -310], [78, -338], [52, -344], [30, -366]]));
 }
 
 function drawKid(c, k, st) {
   c.save();
-  c.translate(st.x, st.y + st.bob);
-  c.rotate(st.tilt);
-  // sombra no chão
-  c.fillStyle = 'rgba(40,60,90,0.18)';
-  c.beginPath(); c.ellipse(0, 4 - st.bob, 105, 16, 0, 0, TAU); c.fill();
-  // sapatos
-  shape(c, '#222', ell(-40, -8, 42, 15));
-  shape(c, '#222', ell(40, -8, 42, 15));
-  // calças
-  shape(c, k.pants, c => c.rect(-70, -48, 140, 36));
-  c.beginPath(); c.moveTo(0, -44); c.lineTo(0, -12); c.lineWidth = 3.5; c.strokeStyle = OUT; c.stroke();
-  // braços atrás do casaco
+  c.translate(st.x, st.y + st.hop);
+  c.rotate(st.rot || 0);
+  c.scale(KS, KS);
+  // sombra de contacto (fica no chão quando salta)
+  c.save(); c.filter = `blur(${3 * CAM_S}px)`; c.fillStyle = 'rgba(60,80,115,0.22)';
+  c.beginPath(); c.ellipse(0, 6 - st.hop, 100, 13, 0, 0, TAU); c.fill(); c.restore();
+  const bf = st.bodyFace * 16, hf = st.headFace;
+  // pés: deslizam alternadamente, sem pernas
+  piece(c, '#262222', ell(-40 + st.step, -8, 42, 14));
+  piece(c, '#262222', ell(40 - st.step, -8, 42, 14));
+  piece(c, k.pants, c => c.rect(-70, -48, 140, 36));
+  c.beginPath(); c.moveTo(bf * 0.5, -44); c.lineTo(bf * 0.5, -12); c.lineWidth = 3; c.strokeStyle = OUT; c.stroke();
   arm(c, k, -1, st.armL); arm(c, k, 1, st.armR);
-  // casaco
-  shape(c, k.jacket, c => {
-    c.moveTo(-64, -178); c.lineTo(64, -178);
-    c.quadraticCurveTo(82, -112, 86, -46); c.lineTo(-86, -46);
-    c.quadraticCurveTo(-82, -112, -64, -178); c.closePath();
+  piece(c, k.jacket, c => {
+    c.moveTo(-64, -180); c.lineTo(64, -180);
+    c.quadraticCurveTo(82, -114, 86, -46); c.lineTo(-86, -46);
+    c.quadraticCurveTo(-82, -114, -64, -180); c.closePath();
   });
-  shape(c, k.hem, c => c.roundRect(-88, -60, 176, 16, 6), 3.5);
-  c.beginPath(); c.moveTo(0, -165); c.lineTo(0, -62); c.lineWidth = 3.5; c.strokeStyle = OUT; c.stroke();
-  [-140, -110, -82].forEach(y => shape(c, OUT, ell(-14, y, 4, 4), 0, false));
+  piece(c, k.hem, c => c.roundRect(-88, -60, 176, 16, 6));
+  c.beginPath(); c.moveTo(bf, -165); c.lineTo(bf, -62); c.lineWidth = 3; c.strokeStyle = OUT; c.stroke();
+  c.fillStyle = OUT; [-140, -112, -84].forEach(y => { c.beginPath(); c.arc(bf - 13, y, 4, 0, TAU); c.fill(); });
   if (k.scarf) {
-    shape(c, k.scarf, c => c.roundRect(-78, -184, 156, 30, 12), 3.5);
-    shape(c, k.scarf, c => { c.moveTo(34, -162); c.lineTo(62, -162); c.lineTo(66, -96); c.lineTo(38, -100); c.closePath(); }, 3.5);
-    c.lineWidth = 3; c.beginPath(); c.moveTo(42, -104); c.lineTo(42, -96); c.moveTo(52, -104); c.lineTo(52, -94); c.moveTo(62, -104); c.lineTo(62, -96); c.stroke();
+    piece(c, k.scarf, c => c.roundRect(-78, -186, 156, 30, 12));
+    const sx = -st.bodyFace >= 0 ? 34 : -64; // a ponta do cachecol fica do lado de trás
+    piece(c, k.scarf, poly([[sx, -164], [sx + 28, -164], [sx + 32, -98], [sx + 4, -102]]));
   }
-  // cabeça
-  shape(c, k.skin, ell(0, -285, 138, 118));
-  headwear(c, k);
-  eyes(c, st);
-  mouth(c, st.mouth, st.mood);
-  if (st.splat) splat(c, st.splat);
+  // cabeça (peça rígida, sem deformar); em 3/4 olhos e boca deslizam para o lado
+  piece(c, k.skin, ell(0, -285, 138, 118));
+  headwear(c, k, hf);
+  const fx = hf * 24;
+  eyes(c, k, st, fx);
+  mouth(c, st.mouth, hf * 34, st.mood);
+  if (st.splat) splat(c);
   c.restore();
 }
 
-// ------------------------------- TIMELINE ----------------------------------
-const TALK_A = [0.25, 0.75, 0.4, 0.95, 0.1, 0.6, 0.85, 0.3, 0.7, 0.05, 0.9, 0.5];
-const TALK_B = [0.6, 0.95, 0.3, 0.8, 0.1, 0.7, 1.0, 0.4];
-const LAUGH = [1.0, 0.55, 1.0, 0.5];
+// -------------------------------- TIMELINE ---------------------------------
+// Folhas de exposição das bocas: uma entrada por pose (2 frames).
+const SHEET_A = ['ee', 'ee', 'small', 'closed', 'oo', 'oo', 'ee', 'wide', 'wide', 'oo', 'mid', 'closed'];   // "Ei! Hoje não há aulas!"
+const SHEET_B = ['wide', 'wide', 'ee', 'ee', 'small', 'oo', 'closed', 'closed', 'oo', 'oo', 'wide', 'mid', 'closed']; // "A sério?! Brutal!"
+const SHEET_LAUGH = ['wide', 'wide', 'mid', 'small'];
 
-const HIT = 3.95, THROW = 3.55;
-const A_X = 760, B_X = 1170, GROUND = 905;
+const GROUND = 968, A_X = 750, B_X = 1185, KS = 1.15; // KS: escala das personagens
+const T_A_TALK = 1.42, T_SHOT2 = 2.25, T_B_TALK = 2.42, T_SHOT3 = 3.58, T_THROW = 3.62, T_HIT = 3.96, T_LAUGH = 4.12, T_ANGRY = 4.46;
+
+function walker(q, x0, x1, t0, t1, face) {
+  // andar: 1 passo a cada 3 poses (6 frames = 4 passos/s); salto só na pose de impulso
+  const p = clamp((q - t0) / (t1 - t0), 0, 1);
+  const st = { x: lerp(x0, x1, p), hop: 0, step: 0, walking: p > 0 && p < 1 };
+  if (st.walking) {
+    const i = poseIdx(q, t0), ph = i % 3, foot = Math.floor(i / 3) % 2 ? 1 : -1;
+    st.hop = ph === 1 ? -14 : 0;
+    st.step = foot * face * (ph === 0 ? 10 : 20);
+  }
+  return st;
+}
 
 function stateA(t) {
-  const q = onTwos(t);
-  const walk = clamp(q / 1.2, 0, 1);
-  const st = { x: lerp(-230, A_X, walk), y: GROUND, bob: 0, tilt: 0, look: [1, 0], mouth: 0, mood: 'smile', armL: 75, armR: 75, blink: 0 };
-  if (walk < 1) { st.bob = -Math.abs(Math.sin(q * Math.PI * 4.5)) * 22; st.tilt = Math.sin(q * Math.PI * 4.5) * 0.04; }
-  if (between(t, 1.4, 2.8)) {
-    st.mouth = TALK_A[Math.floor(q * 12) % TALK_A.length];
-    st.armR = -15 + Math.sin(q * 9) * 20; // gesticula
-    st.bob = -Math.abs(Math.sin(q * 6)) * 4;
-  }
-  if (between(t, 2.95, 3.05)) st.blink = 1;
-  if (between(t, 2.85, 3.55)) st.look = [1, -0.2];
-  if (between(t, 3.55, HIT)) st.look = [1, -0.6]; // vê a bola a chegar
-  if (t >= HIT + 0.08) {
-    // a rir
-    const lq = Math.floor((t - HIT) * 12);
-    st.mouth = LAUGH[lq % LAUGH.length];
-    st.bob = -Math.abs(Math.sin((q - HIT) * Math.PI * 7)) * 14;
-    st.tilt = -0.05;
-    st.armL = 112; st.armR = 112; // mãos na barriga
-    st.look = [0.9, 0.3];
+  const q = twos(t);
+  const w = walker(q, -200, A_X, 0, 1.08, 1);
+  const st = { x: w.x, y: GROUND, hop: w.hop, step: w.step, rot: 0, headFace: 1, bodyFace: 1,
+    armL: 76, armR: 76, mouth: 'closed', mood: 'smile', eyes: { state: 'open', look: [0.7, 0] } };
+  if (between(q, 1.25, T_A_TALK)) st.eyes.state = 'closed';                 // pestaneja antes de falar
+  if (between(q, T_A_TALK, T_A_TALK + SHEET_A.length * POSE)) st.mouth = SHEET_A[poseIdx(q, T_A_TALK)];
+  if (q >= T_A_TALK + POSE * 2 && q < T_SHOT2) st.armR = q < T_A_TALK + POSE * 3 ? 30 : -12; // gesto: snap + hold
+  if (q >= T_THROW + POSE * 2) st.eyes.look = [0.9, -0.5];                  // vê a bola
+  if (q >= T_HIT) st.eyes.look = [0.8, 0.1];
+  if (q >= T_LAUGH) {
+    const i = poseIdx(q, T_LAUGH);
+    st.headFace = 0;                                                         // cabeça vira primeiro...
+    st.bodyFace = q >= T_LAUGH + POSE * 3 ? 0 : 1;                           // ...o corpo 3 poses depois
+    st.mouth = SHEET_LAUGH[i % SHEET_LAUGH.length];
+    st.hop = i % 4 === 0 ? -8 : 0;
+    st.armL = st.armR = 116;                                                 // mãos na barriga
+    st.rot = 0.04;
+    st.eyes.look = [0.6, 0.15];
   }
   return st;
 }
 
 function stateB(t) {
-  const q = onTwos(t);
-  const walk = clamp((q - 0.1) / 1.15, 0, 1);
-  const st = { x: lerp(2150, B_X, walk), y: GROUND, bob: 0, tilt: 0, look: [-1, 0], mouth: 0, mood: 'neutral', armL: 75, armR: 75, blink: 0 };
-  if (walk < 1 && walk > 0) { st.bob = -Math.abs(Math.sin(q * Math.PI * 4.5 + 1)) * 22; st.tilt = Math.sin(q * Math.PI * 4.5 + 1) * 0.04; }
-  if (between(t, 1.85, 1.95)) st.blink = 1;
-  if (between(t, 1.4, 2.8)) st.look = [-1, -0.1];
-  if (between(t, 2.85, 3.55)) {
-    st.surprised = true; st.mood = 'smile';
-    st.mouth = TALK_B[Math.floor(q * 12) % TALK_B.length];
-    st.armL = -40; st.armR = -40; // braços no ar
-    st.bob = -Math.abs(Math.sin(q * 10)) * 10;
+  const q = twos(t);
+  const w = walker(q, 2140, B_X, 0.12, 1.12, -1);
+  const st = { x: w.x, y: GROUND, hop: w.hop, step: w.step, rot: 0, headFace: -1, bodyFace: -1,
+    armL: 76, armR: 76, mouth: 'closed', mood: 'neutral', eyes: { state: 'open', look: [-0.7, 0] } };
+  if (between(q, T_SHOT2, T_B_TALK)) st.eyes.state = 'closed';             // pestaneja antes de falar
+  if (q >= T_B_TALK && q < T_HIT) {
+    st.eyes.surprised = true; st.mood = 'smile';
+    if (q < T_B_TALK + SHEET_B.length * POSE) st.mouth = SHEET_B[poseIdx(q, T_B_TALK)];
+    const g = poseIdx(q, T_B_TALK + POSE * 3);
+    if (g >= 0 && q < T_SHOT3) { st.armL = st.armR = g === 0 ? 20 : -38; } // braços no ar: snap + hold
   }
-  if (t >= HIT) {
-    const d = t - HIT;
-    const shake = d < 0.35 ? Math.sin(d * 70) * (0.35 - d) * 0.3 : 0;
-    st.tilt = -0.07 * Math.exp(-d * 4) + shake;
-    st.x += 22 * Math.exp(-d * 5);
-    st.splat = clamp(d / 0.12, 0, 1);
-    st.look = [0.9, -0.1];
-    st.brows = 'angry'; st.mood = 'frown'; st.mouth = 0;
-    st.armL = 60; st.armR = 60;
-    if (d < 0.2) { st.blink = 1; st.armL = -20; st.armR = -20; }
+  if (q >= T_HIT && q < T_ANGRY) {                                          // desenho de reação ao impacto
+    st.eyes = { state: 'squeeze', look: [0, 0] };
+    st.mouth = 'wide'; st.splat = true;
+    st.rot = -0.34; st.x += 18;                                             // roda rígido ~20°
+    st.armL = st.armR = -30;
+  }
+  if (q >= T_ANGRY) {
+    st.splat = true; st.mood = 'frown';
+    st.headFace = 1;                                                         // cabeça vira para quem atirou...
+    st.bodyFace = q >= T_ANGRY + POSE * 2 ? 1 : -1;                          // ...e o corpo vem depois
+    st.eyes = { state: 'open', angry: true, look: [0.85, -0.05] };
   }
   return st;
 }
 
 function snowball(c, t) {
-  if (t < THROW) return;
-  if (t < HIT) {
-    const p = (t - THROW) / (HIT - THROW);
-    const x = lerp(2010, B_X + 70, p), y = lerp(430, GROUND - 360, p) - Math.sin(p * Math.PI) * 140;
-    c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 5; c.lineCap = 'round';
-    for (const o of [-12, 0, 12]) { c.beginPath(); c.moveTo(x + 40, y + o); c.lineTo(x + 95, y + o - 14); c.stroke(); }
-    shape(c, '#ffffff', ell(x, y, 24, 24), 4);
+  const q = twos(t);
+  if (q >= T_THROW && q < T_HIT) {
+    const p = (q - T_THROW) / (T_HIT - T_THROW);
+    const x = lerp(2020, B_X + 90, p), y = lerp(330, GROUND - 440, p) - Math.sin(p * Math.PI) * 90;
+    c.strokeStyle = 'rgba(250,252,255,0.85)'; c.lineWidth = 5; c.lineCap = 'round';
+    for (const o of [-11, 0, 11]) { c.beginPath(); c.moveTo(x + 38, y + o); c.lineTo(x + 100, y + o - 18); c.stroke(); }
+    piece(c, '#f7fafc', ell(x, y, 23, 23));
     return;
   }
-  // pedaços de neve a voar
-  const d = t - HIT;
-  if (d > 0.7) return;
-  const r = rng(11);
-  for (let i = 0; i < 14; i++) {
-    const a = -Math.PI * (0.05 + r() * 0.9), sp = 260 + r() * 380;
-    const x = B_X + 70 + Math.cos(a) * sp * d;
-    const y = GROUND - 360 + Math.sin(a) * sp * d + 900 * d * d;
-    shape(c, '#ffffff', ell(x, y, 6 + r() * 8, 5 + r() * 7), 2.5, false);
+  const i = poseIdx(q, T_HIT);
+  if (i < 0 || i > 3) return;
+  const cx = B_X + 80, cy = GROUND - 445;
+  if (i === 0) {   // 1 pose de "puf" achatado
+    piece(c, '#f7fafc', poly(Array.from({ length: 16 }, (_, k) => { const a = k / 16 * TAU, r = k % 2 ? 40 : 74; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.8]; })));
+    return;
   }
+  const r = rng(11);
+  for (let k = 0; k < 9; k++) {
+    const a = -Math.PI * (0.1 + r() * 0.8) + (r() < 0.3 ? Math.PI * 0.5 : 0), d = (40 + r() * 50) * i;
+    piece(c, '#f7fafc', ell(cx + Math.cos(a) * d, cy + Math.sin(a) * d + 18 * i * i, 8 + r() * 6, 7 + r() * 5), { shadow: false, lw: 2.5 });
+  }
+}
+
+// --------------------------------- CÂMARA ----------------------------------
+// Plano geral -> grande plano de quem fala -> plano geral. Cortes secos.
+function camera(t) {
+  let s = 1, fx = W / 2, fy = H / 2, sx = 0, sy = 0;
+  if (between(t, T_SHOT2, T_SHOT3)) { s = 2.4; fx = 1325; fy = GROUND - 305 * KS; }
+  const i = poseIdx(twos(t), T_HIT);                       // tremor: 2 poses, ±5px
+  if (i === 0) { sx = 6; sy = -5; } else if (i === 1) { sx = -5; sy = 4; }
+  return { s, fx, fy, sx, sy };
+}
+function applyCam(c, cam, depth) {
+  // depth: 0 = muito longe (quase não escala), 1 = plano das personagens
+  const s = 1 + (cam.s - 1) * depth;
+  c.setTransform(s, 0, 0, s, W / 2 - cam.fx * s + cam.sx, H / 2 - cam.fy * s + cam.sy);
 }
 
 function caption(c, t) {
   let text = null;
-  if (between(t, 1.4, 2.85)) text = 'Ei! Cancelaram as aulas por causa da neve!';
-  else if (between(t, 2.85, 3.6)) text = 'A sério?! Brutal!';
-  else if (t >= HIT + 0.08) text = 'HA HA HA HA!';
+  if (between(t, T_A_TALK, T_SHOT2)) text = 'Ei! Hoje não há aulas!';
+  else if (between(t, T_B_TALK, T_SHOT3)) text = 'A sério?! Brutal!';
+  else if (t >= T_LAUGH) text = 'HA HA HA HA!';
   if (!text) return;
-  c.font = '800 54px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-  c.letterSpacing = '1px'; c.wordSpacing = '12px';
-  c.lineJoin = 'round'; c.lineWidth = 9; c.strokeStyle = '#000'; c.strokeText(text, W / 2, 1035);
-  c.fillStyle = '#fff'; c.fillText(text, W / 2, 1035);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.font = '700 46px Inter, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.letterSpacing = '0.5px'; c.wordSpacing = '8px';
+  c.lineJoin = 'round'; c.lineWidth = 7; c.strokeStyle = '#000'; c.strokeText(text, W / 2, 1032);
+  c.fillStyle = '#fff'; c.fillText(text, W / 2, 1032);
 }
 
 function renderFrame(t) {
+  const cam = camera(t);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(bg, 0, 0);
-  snow(ctx, t, false);
-  const a = stateA(t), b = stateB(t);
-  drawKid(ctx, KID_A, a);
-  drawKid(ctx, KID_B, b);
+  ctx.fillStyle = '#79b5e4'; ctx.fillRect(0, 0, W, H);
+  applyCam(ctx, cam, 0.5); ctx.drawImage(FAR, 0, 0);
+  applyCam(ctx, cam, 0.75); ctx.drawImage(MID, 0, 0);
+  applyCam(ctx, cam, 1); ctx.drawImage(NEAR, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); snow(ctx, t, false);
+  applyCam(ctx, cam, 1); CAM_S = cam.s;
+  drawKid(ctx, KID_A, stateA(t));
+  drawKid(ctx, KID_B, stateB(t));
   snowball(ctx, t);
-  snow(ctx, t, true);
-  // textura de papel
-  ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 0.16;
-  ctx.drawImage(paper, 0, 0); ctx.restore();
+  CAM_S = 1;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); snow(ctx, t, true);
   caption(ctx, t);
 }
 
 buildBackground();
-buildPaper();
 window.renderFrame = renderFrame;
 window.ready = true;
 
 if (!location.search.includes('render')) {
   const t0 = performance.now();
   (function loop(now) {
-    renderFrame(((now - t0) / 1000) % DURATION);
+    renderFrame(Math.floor(((now - t0) / 1000) % DURATION * FPS) / FPS);
     requestAnimationFrame(loop);
   })(t0);
 }
